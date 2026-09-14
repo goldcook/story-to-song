@@ -1,7 +1,7 @@
 {
-  "name": "叙音 · 把故事唱出来",
+  "name": "叙音 · 私人故事唱片",
   "short_name": "叙音",
-  "description": "把你的故事变成歌词、旋律与专业音乐生成 Prompt。",
+  "description": "把一段真实故事做成可播放、可收藏、可分享的私人旋律唱片。",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#f2ede3",

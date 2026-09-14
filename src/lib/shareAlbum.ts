@@ -9,6 +9,7 @@ export interface AlbumVisual {
 
 export interface AlbumAssets {
   cover: Blob
+  poster: Blob
   audio: Blob
 }
 
@@ -127,16 +128,83 @@ async function createAlbumCover(result: SongResult) {
   })
 }
 
+async function createStoryPoster(result: SongResult, cover: Blob) {
+  const width = 1080
+  const height = 1350
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('Canvas is not available')
+  const coverImage = await createImageBitmap(cover)
+  context.drawImage(coverImage, 0, 0, width, width)
+  coverImage.close()
+
+  context.fillStyle = '#292823'
+  context.fillRect(0, width, width, height - width)
+  context.fillStyle = result.mood.accent
+  context.fillRect(88, 1142, 62, 7)
+  context.fillStyle = '#f3ede2'
+  context.font = '600 31px "Noto Serif SC", "Songti SC", serif'
+  context.fillText(result.theme, 88, 1215)
+  context.fillStyle = 'rgba(243, 237, 226, .65)'
+  context.font = '500 24px "DM Sans", "PingFang SC", sans-serif'
+  context.letterSpacing = '3px'
+  context.fillText('A PRIVATE RECORD MADE FROM A TRUE STORY', 88, 1272)
+  context.fillStyle = result.mood.accent
+  context.font = '600 24px "DM Sans", sans-serif'
+  context.fillText('XIYIN  /  叙音', 820, 1272)
+
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob)
+      else reject(new Error('Unable to create story poster'))
+    }, 'image/png')
+  })
+}
+
 export function prepareAlbumAssets(result: SongResult): Promise<AlbumAssets> {
   const cached = assetCache.get(result.id)
   if (cached) return cached
   const preparation = Promise.all([
     createAlbumCover(result),
     renderSongPreviewWav(result),
-  ]).then(([cover, audio]) => ({ cover, audio }))
+  ]).then(async ([cover, audio]) => ({
+    cover,
+    poster: await createStoryPoster(result, cover),
+    audio,
+  }))
   assetCache.set(result.id, preparation)
   void preparation.catch(() => assetCache.delete(result.id))
   return preparation
+}
+
+export function createShareUrl(result: SongResult) {
+  const payload = JSON.stringify({ version: 1, story: result.story })
+  const bytes = new TextEncoder().encode(payload)
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  const token = btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '')
+  const url = new URL(window.location.href)
+  url.search = ''
+  url.hash = ''
+  url.searchParams.set('album', token)
+  return url.toString()
+}
+
+export function readSharedStory() {
+  const token = new URL(window.location.href).searchParams.get('album')
+  if (!token) return null
+  try {
+    const normalized = token.replaceAll('-', '+').replaceAll('_', '/')
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
+    const binary = atob(padded)
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0))
+    const payload = JSON.parse(new TextDecoder().decode(bytes)) as { version?: number; story?: string }
+    return payload.version === 1 && typeof payload.story === 'string' ? payload.story.slice(0, 1000) : null
+  } catch {
+    return null
+  }
 }
 
 function safeFilename(value: string) {
@@ -152,6 +220,23 @@ function download(blob: Blob, filename: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
+async function copyText(value: string) {
+  try {
+    await navigator.clipboard.writeText(value)
+    return
+  } catch {
+    const input = document.createElement('textarea')
+    input.value = value
+    input.style.position = 'fixed'
+    input.style.opacity = '0'
+    document.body.appendChild(input)
+    input.select()
+    const copied = document.execCommand('copy')
+    input.remove()
+    if (!copied) throw new Error('Clipboard is not available')
+  }
+}
+
 export async function shareAlbum(
   result: SongResult,
   assets: AlbumAssets,
@@ -159,11 +244,13 @@ export async function shareAlbum(
   const name = safeFilename(result.title)
   const files = [
     new File([assets.cover], `${name}-专辑封面.png`, { type: 'image/png' }),
+    new File([assets.poster], `${name}-故事海报.png`, { type: 'image/png' }),
     new File([assets.audio], `${name}-纯音乐.wav`, { type: 'audio/wav' }),
   ]
   const shareData = {
     title: `《${result.title}》· 叙音`,
     text: `${result.theme}。从这个故事里生成了一段 ${Math.round(result.mood.tempo)} BPM 的${result.mood.label}旋律。\n\n${result.story.slice(0, 120)}`,
+    url: createShareUrl(result),
     files,
   }
 
@@ -177,6 +264,29 @@ export async function shareAlbum(
   }
 
   download(assets.cover, files[0].name)
-  download(assets.audio, files[1].name)
+  download(assets.poster, files[1].name)
+  download(assets.audio, files[2].name)
   return 'downloaded'
+}
+
+export async function shareAlbumLink(result: SongResult) {
+  const url = createShareUrl(result)
+  if (navigator.share) {
+    try {
+      await navigator.share({
+        title: `《${result.title}》· 叙音`,
+        text: `${result.theme}。这是由一段真实故事生成的私人旋律。`,
+        url,
+      })
+      return 'shared' as const
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return 'cancelled' as const
+    }
+  }
+  await copyText(url)
+  return 'copied' as const
+}
+
+export function downloadStoryPoster(result: SongResult, assets: AlbumAssets) {
+  download(assets.poster, `${safeFilename(result.title)}-故事海报.png`)
 }
