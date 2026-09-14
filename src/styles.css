@@ -303,7 +303,7 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid var(--orange);
 .player-main { min-width: 0; }
 .player-meta { display: flex; justify-content: space-between; gap: 8px; font-size: 10px; }
 .player-meta span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.player-meta small { color: #858178; font-size: 7px; border: 1px solid #5b5851; padding: 2px 4px; border-radius: 2px; }
+.player-meta small { color: #aaa59a; font-size: 8px; white-space: nowrap; }
 .progress-track { height: 2px; margin-top: 11px; background: #55524c; overflow: hidden; }
 .progress-track i { display: block; height: 100%; background: var(--mood-accent); transition: width .18s linear; }
 .equalizer { height: 22px; display: flex; gap: 3px; align-items: center; justify-content: flex-end; }

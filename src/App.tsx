@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { playSongPreview } from './lib/audioEngine'
+import { getSongPreviewDuration, playSongPreview } from './lib/audioEngine'
 import { generateSong, samples } from './lib/storyEngine'
 import type { SongResult } from './types'
 
@@ -37,6 +37,11 @@ function loadHistory() {
     localStorage.removeItem(HISTORY_KEY)
     return []
   }
+}
+
+function formatDuration(seconds: number) {
+  const rounded = Math.max(0, Math.round(seconds))
+  return `${Math.floor(rounded / 60)}:${String(rounded % 60).padStart(2, '0')}`
 }
 
 function Icon({ name, size = 20 }: { name: string; size?: number }) {
@@ -87,6 +92,7 @@ function App() {
   const audioRef = useRef<ReturnType<typeof playSongPreview> | null>(null)
   const progressTimerRef = useRef<number | null>(null)
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
+  const previewDuration = result ? getSongPreviewDuration(result.mood.tempo) : 0
 
   useEffect(() => {
     return () => audioRef.current?.stop()
@@ -262,7 +268,7 @@ function App() {
             </div>
           </div>
           <button className="create-button" disabled={story.trim().length < 12} onClick={createSong}>
-            <Icon name="spark" /><span>把故事变成歌</span><small>约 3 秒</small>
+            <Icon name="spark" /><span>把故事变成歌</span><small>生成约 3 秒</small>
           </button>
         </section>
       )}
@@ -315,7 +321,12 @@ function App() {
             </button>
             <div className="player-main">
               <div className="player-meta">
-                <span>{isPlaying ? '正在演奏情绪旋律' : '试听浏览器生成的旋律'}</span><small>DEMO</small>
+                <span>{isPlaying ? '正在演奏多层器乐编曲' : '试听多层器乐编曲 · 无人声'}</span>
+                <small>
+                  {isPlaying
+                    ? `${formatDuration(previewDuration * playProgress / 100)} / ${formatDuration(previewDuration)}`
+                    : `约 ${Math.round(previewDuration)} 秒`}
+                </small>
               </div>
               <div className="progress-track"><i style={{ width: `${playProgress}%` }} /></div>
             </div>
