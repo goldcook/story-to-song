@@ -1,0 +1,18 @@
+{
+  "name": "叙音 · 把故事唱出来",
+  "short_name": "叙音",
+  "description": "把你的故事变成歌词、旋律与专业音乐生成 Prompt。",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f2ede3",
+  "theme_color": "#f2ede3",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
