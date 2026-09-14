@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { getSongPreviewDuration, playSongPreview } from './lib/audioEngine'
+import { getArrangementTracks, getSongPreviewDuration, playSongPreview } from './lib/audioEngine'
 import { generateSong, samples } from './lib/storyEngine'
+import {
+  getAlbumVisual,
+  prepareAlbumAssets,
+  shareAlbum,
+  type AlbumAssets,
+} from './lib/shareAlbum'
 import type { SongResult } from './types'
 
 type View = 'compose' | 'creating' | 'result'
@@ -56,6 +62,7 @@ function Icon({ name, size = 20 }: { name: string; size?: number }) {
     back: <path d="m15 18-6-6 6-6" />,
     check: <path d="m5 12 4 4L19 6" />,
     history: <><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5M12 7v5l3 2" /></>,
+    share: <><circle cx="18" cy="5" r="2.5" /><circle cx="6" cy="12" r="2.5" /><circle cx="18" cy="19" r="2.5" /><path d="m8.2 10.8 7.6-4.5m-7.6 6.9 7.6 4.5" /></>,
   }
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -77,6 +84,32 @@ function Logo() {
   )
 }
 
+function AlbumArtwork({ result, compact = false }: { result: SongResult; compact?: boolean }) {
+  const visual = getAlbumVisual(result)
+  const style = {
+    '--album-color': result.mood.color,
+    '--album-accent': result.mood.accent,
+    '--album-rotation': `${visual.rotation}deg`,
+    '--album-scale': visual.orbitScale,
+    '--album-x': `${48 + visual.seed % 18}%`,
+    '--album-y': `${28 + visual.seed % 14}%`,
+  } as CSSProperties
+
+  return (
+    <div className={`album-artwork ${compact ? 'compact' : ''}`} style={style}>
+      <div className="album-mark">叙音 <i /> 01</div>
+      <div className="album-orbits">
+        {[1, 2, 3, 4, 5].map((ring) => <i key={ring} />)}
+        <span />
+      </div>
+      <div className="album-caption">
+        <strong>《{result.title}》</strong>
+        <span>{result.mood.label} · {result.mood.tempo} BPM</span>
+      </div>
+    </div>
+  )
+}
+
 function App() {
   const [story, setStory] = useState('')
   const [view, setView] = useState<View>('compose')
@@ -89,14 +122,34 @@ function App() {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const [history, setHistory] = useState<SongResult[]>(loadHistory)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [shareAssets, setShareAssets] = useState<AlbumAssets | null>(null)
+  const [shareState, setShareState] = useState<'preparing' | 'ready' | 'sharing' | 'shared' | 'downloaded' | 'failed'>('preparing')
   const audioRef = useRef<ReturnType<typeof playSongPreview> | null>(null)
   const progressTimerRef = useRef<number | null>(null)
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const previewDuration = result ? getSongPreviewDuration(result.mood.tempo) : 0
+  const arrangementTracks = result ? getArrangementTracks(result) : []
 
   useEffect(() => {
     return () => audioRef.current?.stop()
   }, [])
+
+  useEffect(() => {
+    if (!result) return
+    let active = true
+    void prepareAlbumAssets(result)
+      .then((assets) => {
+        if (!active) return
+        setShareAssets(assets)
+        setShareState('ready')
+      })
+      .catch(() => {
+        if (active) setShareState('failed')
+      })
+    return () => {
+      active = false
+    }
+  }, [result])
 
   const createSong = () => {
     if (story.trim().length < 12) return
@@ -107,6 +160,8 @@ function App() {
     window.setTimeout(() => setCreatingStep(2), 1300)
     window.setTimeout(() => setCreatingStep(3), 1950)
     window.setTimeout(() => {
+      setShareAssets(null)
+      setShareState('preparing')
       setResult(next)
       setView('result')
       setTab('song')
@@ -203,14 +258,45 @@ function App() {
     URL.revokeObjectURL(url)
   }
 
+  const handleShareAlbum = async () => {
+    if (!result || shareState === 'sharing' || shareState === 'preparing') return
+    if (!shareAssets) {
+      setShareState('preparing')
+      try {
+        const assets = await prepareAlbumAssets(result)
+        setShareAssets(assets)
+        setShareState('ready')
+      } catch {
+        setShareState('failed')
+      }
+      return
+    }
+    setShareState('sharing')
+    try {
+      const outcome = await shareAlbum(result, shareAssets)
+      if (outcome === 'cancelled') {
+        setShareState('ready')
+        return
+      }
+      setShareState(outcome)
+      window.setTimeout(() => setShareState('ready'), 2600)
+    } catch {
+      setShareState('failed')
+    }
+  }
+
   const reset = () => {
     stopPlayback()
+    setShareAssets(null)
+    setShareState('preparing')
     setView('compose')
     setResult(null)
   }
 
   const openHistoryItem = (item: SongResult) => {
     stopPlayback()
+    setShareAssets(null)
+    setShareState('preparing')
     setResult(item)
     setStory(item.story)
     setHistoryOpen(false)
@@ -235,8 +321,8 @@ function App() {
         <section className="compose-view page-enter">
           <div className="intro-copy">
             <span className="eyebrow"><i /> STORY INTO SOUND</span>
-            <h1>你的故事，<br /><em>值得被唱出来。</em></h1>
-            <p>不必组织语言。说一段回忆、一次心动，或一个还没有结局的故事。</p>
+            <h1>你的故事，<br /><em>值得有自己的旋律。</em></h1>
+            <p>说一段回忆、一次心动，或一个还没有结局的故事。我们会把它配成一段纯器乐。</p>
           </div>
           <div className={`story-card ${isListening ? 'is-listening' : ''}`}>
             <div className="story-card-head">
@@ -268,7 +354,7 @@ function App() {
             </div>
           </div>
           <button className="create-button" disabled={story.trim().length < 12} onClick={createSong}>
-            <Icon name="spark" /><span>把故事变成歌</span><small>生成约 3 秒</small>
+            <Icon name="spark" /><span>生成 15–20 秒旋律</span><small>纯器乐</small>
           </button>
         </section>
       )}
@@ -282,10 +368,10 @@ function App() {
           <div className="creating-copy">
             <span className="eyebrow"><i /> COMPOSING</span>
             <h2>正在听懂<br />这个故事</h2>
-            <p>每一种情绪，都有自己的速度与和弦。</p>
+            <p>从情绪与场景里，组合这一段故事的专属配乐。</p>
           </div>
           <div className="creating-steps">
-            {['捕捉故事里的情绪', '提炼歌词与核心意象', '设计旋律与乐器'].map((label, index) => (
+            {['捕捉故事里的情绪', '识别故事发生的场景', '组合旋律与多轨配乐'].map((label, index) => (
               <div className={creatingStep > index ? 'complete' : creatingStep === index ? 'active' : ''} key={label}>
                 <span>{creatingStep > index ? <Icon name="check" size={14} /> : `0${index + 1}`}</span>
                 <p>{label}</p><i />
@@ -301,12 +387,9 @@ function App() {
           style={{ '--mood-color': result.mood.color, '--mood-accent': result.mood.accent } as CSSProperties}
         >
           <div className="result-hero">
-            <div className="vinyl-wrap">
-              <div className={`vinyl ${isPlaying ? 'spinning' : ''}`}>
-                <div className="vinyl-groove" />
-                <div className="vinyl-label"><span>{result.mood.label}</span><i /></div>
-              </div>
-              <span className="vinyl-shadow" />
+            <div className="album-stage">
+              <div className={`album-disc ${isPlaying ? 'spinning' : ''}`}><i /></div>
+              <AlbumArtwork result={result} compact />
             </div>
             <div className="song-heading">
               <span className="eyebrow">YOUR SONG · {result.mood.tempo} BPM</span>
@@ -335,8 +418,33 @@ function App() {
             </div>
           </div>
 
+          <button
+            className={`share-album-button state-${shareState}`}
+            onClick={handleShareAlbum}
+            disabled={shareState === 'preparing' || shareState === 'sharing'}
+          >
+            <span className="share-icon"><Icon name={shareState === 'shared' || shareState === 'downloaded' ? 'check' : 'share'} size={18} /></span>
+            <span>
+              <strong>
+                {shareState === 'preparing'
+                  ? '正在制作专辑分享包…'
+                  : shareState === 'sharing'
+                    ? '正在打开系统分享…'
+                    : shareState === 'shared'
+                      ? '专辑已发送'
+                      : shareState === 'downloaded'
+                        ? '封面与音乐已下载'
+                        : shareState === 'failed'
+                          ? '分享准备失败，点此重试'
+                          : '一键分享这张故事专辑'}
+              </strong>
+              <small>专属封面 + {Math.round(previewDuration)} 秒 WAV 纯音乐</small>
+            </span>
+            <Icon name="arrow" size={16} />
+          </button>
+
           <nav className="result-tabs" aria-label="作品内容">
-            {([['song', '歌曲'], ['lyrics', '歌词'], ['prompt', '专业 Prompt']] as const).map(([id, label]) => (
+            {([['song', '编曲'], ['lyrics', '歌词灵感'], ['prompt', '专业 Prompt']] as const).map(([id, label]) => (
               <button key={id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}>{label}</button>
             ))}
           </nav>
@@ -362,6 +470,23 @@ function App() {
                   {result.mood.instruments.map((instrument) => <span key={instrument}>{instrument}</span>)}
                 </div>
               </div>
+              <div className="arrangement-card">
+                <div className="arrangement-heading">
+                  <div><span className="section-label">STORY ARRANGEMENT</span><h3>这段故事的编曲轨道</h3></div>
+                  <small>{arrangementTracks.length} TRACKS</small>
+                </div>
+                <div className="track-list">
+                  {arrangementTracks.map((track, index) => (
+                    <div className="track-row" key={track.id}>
+                      <span className="track-number">{String(index + 1).padStart(2, '0')}</span>
+                      <div><strong>{track.label}</strong><small>{track.role}</small></div>
+                      <span className={`track-wave ${isPlaying ? 'active' : ''}`}>
+                        {[1, 2, 3, 4, 5, 6].map((bar) => <i key={bar} />)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
               <div className="story-echo">
                 <span className="section-label">从故事里听见</span>
                 <blockquote>“{result.hook}”</blockquote>
@@ -373,7 +498,7 @@ function App() {
           {tab === 'lyrics' && (
             <div className="tab-panel lyrics-panel">
               <div className="lyrics-title">
-                <span className="section-label">完整歌词</span>
+                <span className="section-label">可选歌词灵感 · 不参与试听</span>
                 <button onClick={downloadLyrics}><Icon name="download" size={16} />导出</button>
               </div>
               {result.lyrics.map((section) => (

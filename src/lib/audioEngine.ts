@@ -35,6 +35,22 @@ interface Arrangement {
   ambience: 'air' | 'rain' | 'tape'
 }
 
+interface StoryScene {
+  label: string
+  ambience: Arrangement['ambience']
+  home: boolean
+  rain: boolean
+  transit: boolean
+  celestial: boolean
+  water: boolean
+}
+
+export interface ArrangementTrack {
+  id: string
+  label: string
+  role: string
+}
+
 const ARRANGEMENTS: Record<MoodId, Arrangement> = {
   nostalgic: { lead: 'pluck', pad: 'bowed', percussion: 'soft', ambience: 'tape' },
   joyful: { lead: 'pluck', pad: 'warm', percussion: 'full', ambience: 'air' },
@@ -43,6 +59,64 @@ const ARRANGEMENTS: Record<MoodId, Arrangement> = {
   tense: { lead: 'pluck', pad: 'bowed', percussion: 'full', ambience: 'air' },
   tender: { lead: 'piano', pad: 'warm', percussion: 'none', ambience: 'tape' },
   calm: { lead: 'bell', pad: 'warm', percussion: 'none', ambience: 'rain' },
+}
+
+function getStoryScene(story: string, fallback: Arrangement['ambience']): StoryScene {
+  const home = /外婆|爷爷|奶奶|妈妈|爸爸|家人|回家|院子|故乡/.test(story)
+  const rain = /下雨|雨里|雨夜|雨声|雨滴|暴雨/.test(story)
+  const transit = /火车|地铁|车站|站台|公路|开车|城市|出发/.test(story)
+  const celestial = /夜晚|夏夜|凌晨|星星|星空|月亮|月光/.test(story)
+  const water = /大海|海面|海边|湖边|河边|浪花|海风/.test(story)
+  const label = rain
+    ? '雨夜空间'
+    : transit
+      ? '移动旅途'
+      : home
+        ? '旧家记忆'
+        : water
+          ? '海风远景'
+          : celestial
+            ? '夜空微光'
+            : '留白空间'
+
+  return {
+    label,
+    ambience: rain ? 'rain' : home ? 'tape' : water || celestial ? 'air' : fallback,
+    home,
+    rain,
+    transit,
+    celestial,
+    water,
+  }
+}
+
+export function getArrangementTracks(result: SongResult): ArrangementTrack[] {
+  const arrangement = ARRANGEMENTS[result.mood.id]
+  const scene = getStoryScene(result.story, arrangement.ambience)
+  const leadNames = { piano: '柔音钢琴', pluck: '原声拨弦', bell: '手碟钟音' }
+  const padNames = { warm: '暖色和弦铺底', bowed: '弓弦氛围层' }
+  const tracks: ArrangementTrack[] = [
+    { id: 'lead', label: leadNames[arrangement.lead], role: '主题旋律' },
+    { id: 'pad', label: padNames[arrangement.pad], role: '情绪和声' },
+    { id: 'bass', label: '圆润低音', role: '低频叙事线' },
+  ]
+
+  if (arrangement.percussion !== 'none') {
+    tracks.push({
+      id: 'rhythm',
+      label: arrangement.percussion === 'full' ? '鼓组与沙锤' : '轻柔打击乐',
+      role: '节奏脉冲',
+    })
+  }
+  if (scene.home) tracks.push({ id: 'memory', label: '木质拨弦', role: '家的记忆' })
+  if (scene.transit) tracks.push({ id: 'transit', label: '移动节拍', role: '旅途推进' })
+  if (scene.celestial) tracks.push({ id: 'stars', label: '星点钟琴', role: '夜空高光' })
+  tracks.push({
+    id: 'ambience',
+    label: scene.rain ? '雨幕环境声' : scene.water ? '海风空气层' : scene.home ? '磁带空气感' : '空间环境层',
+    role: scene.label,
+  })
+  return tracks
 }
 
 function previewBars(tempo: number) {
@@ -370,6 +444,25 @@ function scheduleShaker(
   noise.stop(start + 0.06)
 }
 
+function scheduleWoodblock(context: AudioContext, destination: AudioNode, start: number, volume: number) {
+  const oscillator = context.createOscillator()
+  const filter = context.createBiquadFilter()
+  const gain = context.createGain()
+  oscillator.type = 'sine'
+  oscillator.frequency.setValueAtTime(760, start)
+  oscillator.frequency.exponentialRampToValueAtTime(430, start + 0.07)
+  filter.type = 'bandpass'
+  filter.frequency.value = 680
+  filter.Q.value = 3.5
+  gain.gain.setValueAtTime(volume, start)
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.11)
+  oscillator.connect(filter)
+  filter.connect(gain)
+  gain.connect(destination)
+  oscillator.start(start)
+  oscillator.stop(start + 0.12)
+}
+
 function scheduleAmbience(
   context: AudioContext,
   buses: AudioBuses,
@@ -404,10 +497,12 @@ function storySeed(story: string) {
   return seed
 }
 
-export function playSongPreview(result: SongResult, onEnded: () => void): MusicHandle {
-  const context = new AudioContext()
-  void context.resume()
-
+function scheduleComposition(
+  context: AudioContext,
+  result: SongResult,
+  destination: AudioNode,
+  startAt: number,
+) {
   const master = context.createGain()
   const saturation = context.createWaveShaper()
   const compressor = context.createDynamicsCompressor()
@@ -425,17 +520,17 @@ export function playSongPreview(result: SongResult, onEnded: () => void): MusicH
   compressor.release.value = 0.25
   master.connect(saturation)
   saturation.connect(compressor)
-  compressor.connect(context.destination)
+  compressor.connect(destination)
 
   const reverb = createReverb(context, master)
   const buses: AudioBuses = { dry: master, reverb }
   const noiseBuffer = createNoiseBuffer(context, 2)
   const arrangement = ARRANGEMENTS[result.mood.id]
+  const scene = getStoryScene(result.story, arrangement.ambience)
   const beat = 60 / result.mood.tempo
   const bar = beat * 4
   const bars = previewBars(result.mood.tempo)
   const duration = bars * bar
-  const startAt = context.currentTime + 0.08
   const root = rootFrequency(result.mood.key)
   const scale = SCALE_STEPS[result.mood.scale]
   const progression = result.mood.scale === 'minor' ? [0, 5, 3, 6] : [0, 4, 5, 3]
@@ -446,7 +541,7 @@ export function playSongPreview(result: SongResult, onEnded: () => void): MusicH
   master.gain.linearRampToValueAtTime(0.72, startAt + 0.35)
   master.gain.setValueAtTime(0.72, startAt + duration - 1)
   master.gain.exponentialRampToValueAtTime(0.0001, startAt + duration + 0.1)
-  scheduleAmbience(context, buses, noiseBuffer, startAt, duration, arrangement.ambience)
+  scheduleAmbience(context, buses, noiseBuffer, startAt, duration, scene.ambience)
 
   for (let barIndex = 0; barIndex < bars; barIndex += 1) {
     const barStart = startAt + barIndex * bar
@@ -519,8 +614,39 @@ export function playSongPreview(result: SongResult, onEnded: () => void): MusicH
         }
       }
     }
+
+    if (scene.transit && barIndex > 0 && !isLastBar) {
+      scheduleWoodblock(context, master, barStart + beat * 0.5, 0.026)
+      scheduleWoodblock(context, master, barStart + beat * 2.5, 0.02)
+    }
+
+    if (scene.celestial && barIndex % 2 === 1) {
+      const starDegree = scale[(barIndex + 4) % scale.length]
+      scheduleBell(context, buses, noteFrequency(root, starDegree, 1), barStart + beat * 3.25, beat * 0.45, 0.012, 0.35)
+    }
+
+    if (scene.home && barIndex % 2 === 0) {
+      const memoryDegree = scale[(chordRoot + 4) % scale.length]
+      schedulePluck(context, buses, noiseBuffer, noteFrequency(root, memoryDegree), barStart + beat * 3.5, beat * 0.42, 0.02, -0.32)
+    }
+
+    if (scene.water && barIndex % 3 === 1) {
+      scheduleBell(context, buses, noteFrequency(root, scale[4 % scale.length], -1), barStart + beat * 1.5, beat * 1.2, 0.01, -0.4)
+    }
   }
 
+  return { master, duration }
+}
+
+export function playSongPreview(result: SongResult, onEnded: () => void): MusicHandle {
+  const context = new AudioContext()
+  void context.resume()
+  const { master, duration } = scheduleComposition(
+    context,
+    result,
+    context.destination,
+    context.currentTime + 0.08,
+  )
   const timeout = window.setTimeout(() => {
     void context.close()
     onEnded()
@@ -536,4 +662,58 @@ export function playSongPreview(result: SongResult, onEnded: () => void): MusicH
       window.setTimeout(() => void context.close(), 220)
     },
   }
+}
+
+function audioBufferToWav(buffer: AudioBuffer) {
+  const channelCount = Math.min(2, buffer.numberOfChannels)
+  const bytesPerSample = 2
+  const frameCount = buffer.length
+  const dataSize = frameCount * channelCount * bytesPerSample
+  const output = new ArrayBuffer(44 + dataSize)
+  const view = new DataView(output)
+  const channels = Array.from({ length: channelCount }, (_, index) => buffer.getChannelData(index))
+
+  const writeString = (offset: number, value: string) => {
+    for (let index = 0; index < value.length; index += 1) {
+      view.setUint8(offset + index, value.charCodeAt(index))
+    }
+  }
+
+  writeString(0, 'RIFF')
+  view.setUint32(4, 36 + dataSize, true)
+  writeString(8, 'WAVE')
+  writeString(12, 'fmt ')
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true)
+  view.setUint16(22, channelCount, true)
+  view.setUint32(24, buffer.sampleRate, true)
+  view.setUint32(28, buffer.sampleRate * channelCount * bytesPerSample, true)
+  view.setUint16(32, channelCount * bytesPerSample, true)
+  view.setUint16(34, 16, true)
+  writeString(36, 'data')
+  view.setUint32(40, dataSize, true)
+
+  let offset = 44
+  for (let frame = 0; frame < frameCount; frame += 1) {
+    for (let channel = 0; channel < channelCount; channel += 1) {
+      const sample = Math.max(-1, Math.min(1, channels[channel][frame]))
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true)
+      offset += bytesPerSample
+    }
+  }
+  return new Blob([output], { type: 'audio/wav' })
+}
+
+export async function renderSongPreviewWav(result: SongResult) {
+  const duration = getSongPreviewDuration(result.mood.tempo)
+  const sampleRate = 32_000
+  const context = new OfflineAudioContext(2, Math.ceil((duration + 0.35) * sampleRate), sampleRate)
+  scheduleComposition(
+    context as unknown as AudioContext,
+    result,
+    context.destination,
+    0.05,
+  )
+  const buffer = await context.startRendering()
+  return audioBufferToWav(buffer)
 }
