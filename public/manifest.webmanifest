@@ -1,7 +1,7 @@
 {
   "name": "叙音 · 私人故事唱片",
   "short_name": "叙音",
-  "description": "把一段真实故事做成可播放、可收藏、可分享的私人旋律唱片。",
+  "description": "把一段真实生活做成有封面、有故事内页、有专属原声的私人唱片。",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#f2ede3",

@@ -14,7 +14,7 @@ import {
 import type { SongResult } from './types'
 
 type View = 'compose' | 'creating' | 'result'
-type ResultTab = 'song' | 'lyrics' | 'prompt'
+type ResultTab = 'sleeve' | 'sound' | 'notes'
 
 interface SpeechRecognitionEventLike {
   results: ArrayLike<{ 0: { transcript: string } }>
@@ -120,8 +120,10 @@ function App() {
   const [story, setStory] = useState('')
   const [view, setView] = useState<View>(INITIAL_SHARED_RESULT ? 'result' : 'compose')
   const [result, setResult] = useState<SongResult | null>(INITIAL_SHARED_RESULT)
+  const [draftResult, setDraftResult] = useState<SongResult | null>(null)
   const [sharedView, setSharedView] = useState(Boolean(INITIAL_SHARED_RESULT))
-  const [tab, setTab] = useState<ResultTab>('song')
+  const [tab, setTab] = useState<ResultTab>('sleeve')
+  const [replyTo, setReplyTo] = useState<string | null>(null)
   const [isListening, setIsListening] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
   const [creatingStep, setCreatingStep] = useState(0)
@@ -138,13 +140,14 @@ function App() {
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const previewDuration = result ? getSongPreviewDuration(result.mood.tempo) : 0
   const arrangementTracks = result ? getArrangementTracks(result) : []
+  const draftTracks = draftResult ? getArrangementTracks(draftResult) : []
 
   useEffect(() => {
     return () => audioRef.current?.stop()
   }, [])
 
   useEffect(() => {
-    document.title = result ? `《${result.title}》 · 叙音` : '叙音 · 把故事变成私人旋律'
+    document.title = result ? `《${result.title}》 · 叙音私人唱片` : '叙音 · 把一段生活做成私人唱片'
   }, [result])
 
   useEffect(() => {
@@ -185,6 +188,7 @@ function App() {
     setView('creating')
     setCreatingStep(0)
     const next = generateSong(story)
+    setDraftResult(next)
     window.setTimeout(() => setCreatingStep(1), 650)
     window.setTimeout(() => setCreatingStep(2), 1300)
     window.setTimeout(() => setCreatingStep(3), 1950)
@@ -193,8 +197,9 @@ function App() {
       setShareState('preparing')
       setSharedView(false)
       setResult(next)
+      setDraftResult(null)
       setView('result')
-      setTab('song')
+      setTab('sleeve')
       const updated = [next, ...history.filter((item) => item.id !== next.id)].slice(0, 8)
       setHistory(updated)
       localStorage.setItem(HISTORY_KEY, JSON.stringify(updated))
@@ -342,7 +347,9 @@ function App() {
     setShareState('preparing')
     setView('compose')
     setResult(null)
+    setDraftResult(null)
     setSharedView(false)
+    setReplyTo(null)
     setShareOpen(false)
     window.history.replaceState({}, '', window.location.pathname)
   }
@@ -356,12 +363,21 @@ function App() {
     setStory(item.story)
     setHistoryOpen(false)
     setView('result')
-    setTab('song')
+    setTab('sleeve')
   }
 
   const startOwnStory = () => {
+    setReplyTo(null)
     setStory('')
     reset()
+  }
+
+  const startReply = () => {
+    if (!result) return
+    const title = result.title
+    reset()
+    setReplyTo(title)
+    setStory(`听完《${title}》，我想起了……`)
   }
 
   return (
@@ -384,13 +400,20 @@ function App() {
       {view === 'compose' && (
         <section className="compose-view page-enter">
           <div className="intro-copy">
-            <span className="eyebrow"><i /> STORY INTO SOUND</span>
-            <h1>你的故事，<br /><em>值得有自己的旋律。</em></h1>
-            <p>说一段回忆、一次心动，或一个还没有结局的故事。我们会把它配成一段纯器乐。</p>
+            <span className="eyebrow"><i /> A PRIVATE RECORD OF YOUR LIFE</span>
+            <h1>把一段生活，<br /><em>做成一张私人唱片。</em></h1>
+            <p>写下一次想念、一场告别，或今天突然想起的人。叙音会为它制作封面和一段纯器乐原声。</p>
           </div>
+          {replyTo && (
+            <div className="reply-context">
+              <span>正在回应</span>
+              <strong>《{replyTo}》</strong>
+              <button onClick={() => { setReplyTo(null); setStory('') }}>改写自己的故事</button>
+            </div>
+          )}
           <div className={`story-card ${isListening ? 'is-listening' : ''}`}>
             <div className="story-card-head">
-              <span>{isListening ? '正在聆听…' : '讲讲发生了什么'}</span>
+              <span>{isListening ? '正在聆听…' : replyTo ? '写下这张唱片让你想起的事' : '讲讲你想留下的那一刻'}</span>
               <span className="char-count">{story.length} / 1000</span>
             </div>
             <textarea
@@ -408,17 +431,17 @@ function App() {
             </div>
           </div>
           <div className="sample-block">
-            <span>不知道从哪说起？</span>
+            <span>可以从一个自然的时刻开始</span>
             <div className="sample-row">
               {samples.map((sample) => (
-                <button key={sample.label} onClick={() => setStory(sample.story)}>
+                <button key={sample.label} onClick={() => { setReplyTo(null); setStory(sample.story) }}>
                   {sample.label}<Icon name="arrow" size={14} />
                 </button>
               ))}
             </div>
           </div>
           <button className="create-button" disabled={story.trim().length < 12} onClick={createSong}>
-            <Icon name="spark" /><span>生成 15–20 秒旋律</span><small>纯器乐</small>
+            <Icon name="spark" /><span>制作我的私人唱片</span><small>约 19 秒</small>
           </button>
         </section>
       )}
@@ -430,12 +453,22 @@ function App() {
             <div className="orbit-center"><Icon name="spark" size={28} /></div>
           </div>
           <div className="creating-copy">
-            <span className="eyebrow"><i /> COMPOSING</span>
-            <h2>正在听懂<br />这个故事</h2>
-            <p>从情绪与场景里，组合这一段故事的专属配乐。</p>
+            <span className="eyebrow"><i /> PRESSING YOUR RECORD</span>
+            <h2>正在把这段生活<br />压进一张唱片</h2>
+            <p>{draftResult ? `${draftResult.theme}，听起来是${draftResult.mood.label}里带一点${draftResult.secondaryMood}。` : '先听懂故事，再为它安排声音。'}</p>
           </div>
+          {draftResult && (
+            <div className="creating-insight">
+              <span>这张唱片记住了</span>
+              <div>{draftResult.keywords.slice(0, 3).map((keyword) => <strong key={keyword}>{keyword}</strong>)}</div>
+            </div>
+          )}
           <div className="creating-steps">
-            {['捕捉故事里的情绪', '识别故事发生的场景', '组合旋律与多轨配乐'].map((label, index) => (
+            {[
+              draftResult ? `听见 ${draftResult.mood.label}与${draftResult.secondaryMood}` : '听见故事里的情绪',
+              draftResult ? `留下 ${draftResult.keywords.slice(0, 2).join('与')}` : '找到值得留下的细节',
+              draftResult ? `安排 ${draftTracks.length} 层声音` : '为它安排专属原声',
+            ].map((label, index) => (
               <div className={creatingStep > index ? 'complete' : creatingStep === index ? 'active' : ''} key={label}>
                 <span>{creatingStep > index ? <Icon name="check" size={14} /> : `0${index + 1}`}</span>
                 <p>{label}</p><i />
@@ -456,7 +489,7 @@ function App() {
               <AlbumArtwork result={result} compact={!sharedView} />
             </div>
             <div className="song-heading">
-              <span className="eyebrow">YOUR SONG · {result.mood.tempo} BPM</span>
+              <span className="eyebrow">PRIVATE RECORD · {new Date(result.createdAt).getFullYear()}</span>
               <h1>《{result.title}》</h1>
               <p>{result.theme} · {result.mood.genre}</p>
             </div>
@@ -468,7 +501,7 @@ function App() {
             </button>
             <div className="player-main">
               <div className="player-meta">
-                <span>{isPlaying ? '正在演奏多层器乐编曲' : '试听多层器乐编曲 · 无人声'}</span>
+                <span>{isPlaying ? '这段故事正在播放' : '播放这段故事的私人原声'}</span>
                 <small>
                   {isPlaying
                     ? `${formatDuration(previewDuration * playProgress / 100)} / ${formatDuration(previewDuration)}`
@@ -510,104 +543,126 @@ function App() {
                 </div>
               </div>
               <div className="shared-soundscape">
-                <span className="section-label">SOUNDS FROM THIS STORY</span>
+                <span className="section-label">这张唱片用了这些声音</span>
                 <div>
                   {arrangementTracks.map((track) => <span key={track.id}>{track.label}</span>)}
                 </div>
               </div>
-              <button className="make-yours-button" onClick={startOwnStory}>
-                <span><small>TURN YOUR STORY INTO SOUND</small>也制作一张我的故事唱片</span>
-                <Icon name="arrow" size={19} />
-              </button>
+              <div className="shared-actions">
+                <button className="reply-record-button" onClick={startReply}>
+                  <span><small>ANSWER WITH A MEMORY</small>写一张回应唱片</span>
+                  <Icon name="arrow" size={19} />
+                </button>
+                <button className="make-yours-button" onClick={startOwnStory}>
+                  <span><small>START A NEW RECORD</small>制作我自己的私人唱片</span>
+                  <Icon name="arrow" size={19} />
+                </button>
+              </div>
               <p className="shared-signature">由叙音为一段真实故事制作</p>
             </div>
           ) : (
             <>
               <nav className="result-tabs" aria-label="作品内容">
-                {([['song', '编曲'], ['lyrics', '歌词灵感'], ['prompt', '专业 Prompt']] as const).map(([id, label]) => (
+                {([['sleeve', '唱片内页'], ['sound', '声音设计'], ['notes', '制作手记']] as const).map(([id, label]) => (
                   <button key={id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}>{label}</button>
                 ))}
               </nav>
 
-              {tab === 'song' && (
-            <div className="tab-panel song-panel">
-              <div className="mood-card">
-                <div>
-                  <span className="section-label">情绪解读</span>
-                  <h3>{result.mood.label}<i> + {result.secondaryMood}</i></h3>
-                  <p>{result.mood.description}</p>
-                </div>
-                <div className="mood-orb"><i /><i /><i /></div>
-              </div>
-              <div className="music-dna">
-                <span className="section-label">音乐 DNA</span>
-                <div className="dna-grid">
-                  <div><small>速度</small><strong>{result.mood.tempo}</strong><span>BPM</span></div>
-                  <div><small>调性</small><strong>{result.mood.key.split(' ')[0]}</strong><span>{result.mood.scale === 'minor' ? '小调' : '明亮'}</span></div>
-                  <div><small>能量</small><strong>{result.mood.energy}</strong><span>/ 100</span></div>
-                </div>
-                <div className="instrument-list">
-                  {result.mood.instruments.map((instrument) => <span key={instrument}>{instrument}</span>)}
-                </div>
-              </div>
-              <div className="arrangement-card">
-                <div className="arrangement-heading">
-                  <div><span className="section-label">STORY ARRANGEMENT</span><h3>这段故事的编曲轨道</h3></div>
-                  <small>{arrangementTracks.length} TRACKS</small>
-                </div>
-                <div className="track-list">
-                  {arrangementTracks.map((track, index) => (
-                    <div className="track-row" key={track.id}>
-                      <span className="track-number">{String(index + 1).padStart(2, '0')}</span>
-                      <div><strong>{track.label}</strong><small>{track.role}</small></div>
-                      <span className={`track-wave ${isPlaying ? 'active' : ''}`}>
-                        {[1, 2, 3, 4, 5, 6].map((bar) => <i key={bar} />)}
-                      </span>
+              {tab === 'sleeve' && (
+                <div className="tab-panel sleeve-panel">
+                  <article className="liner-note-card">
+                    <div className="liner-note-heading">
+                      <span className="section-label">LINER NOTES · 唱片内页</span>
+                      <small>一段真实生活</small>
                     </div>
-                  ))}
+                    <h3>{result.theme}</h3>
+                    <blockquote>{result.story}</blockquote>
+                    <div className="liner-note-tags">
+                      <span>{result.mood.label}</span>
+                      <span>{result.secondaryMood}</span>
+                      {result.keywords.slice(0, 3).map((keyword) => <span key={keyword}>{keyword}</span>)}
+                    </div>
+                  </article>
+                  <div className="story-echo record-echo">
+                    <span className="section-label">这张唱片留下的一句话</span>
+                    <blockquote>“{result.hook}”</blockquote>
+                    <small>有些话没有说出口，也可以被一段旋律记住。</small>
+                  </div>
                 </div>
-              </div>
-              <div className="story-echo">
-                <span className="section-label">从故事里听见</span>
-                <blockquote>“{result.hook}”</blockquote>
-                <div>{result.keywords.slice(0, 4).map((keyword) => <span key={keyword}>#{keyword}</span>)}</div>
-              </div>
-            </div>
               )}
 
-              {tab === 'lyrics' && (
-            <div className="tab-panel lyrics-panel">
-              <div className="lyrics-title">
-                <span className="section-label">可选歌词灵感 · 不参与试听</span>
-                <button onClick={downloadLyrics}><Icon name="download" size={16} />导出</button>
-              </div>
-              {result.lyrics.map((section) => (
-                <div className="lyric-section" key={section.label}>
-                  <span>{section.label}</span>
-                  <p>{section.lines.map((line, index) => <span key={`${line}-${index}`}>{line}</span>)}</p>
+              {tab === 'sound' && (
+                <div className="tab-panel sound-panel">
+                  <div className="mood-card">
+                    <div>
+                      <span className="section-label">这张唱片的听感</span>
+                      <h3>{result.mood.label}<i> + {result.secondaryMood}</i></h3>
+                      <p>{result.mood.description}</p>
+                    </div>
+                    <div className="mood-orb"><i /><i /><i /></div>
+                  </div>
+                  <div className="arrangement-card">
+                    <div className="arrangement-heading">
+                      <div><span className="section-label">SOUND DESIGN</span><h3>故事被放进这些声音里</h3></div>
+                      <small>{arrangementTracks.length} 层</small>
+                    </div>
+                    <div className="track-list">
+                      {arrangementTracks.map((track, index) => (
+                        <div className="track-row" key={track.id}>
+                          <span className="track-number">{String(index + 1).padStart(2, '0')}</span>
+                          <div><strong>{track.label}</strong><small>{track.role}</small></div>
+                          <span className={`track-wave ${isPlaying ? 'active' : ''}`}>
+                            {[1, 2, 3, 4, 5, 6].map((bar) => <i key={bar} />)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-              ))}
-            </div>
               )}
 
-              {tab === 'prompt' && (
-            <div className="tab-panel prompt-panel">
-              <div className="prompt-intro">
-                <span className="section-label">交给专业音乐 AI</span>
-                <h3>编曲说明已经准备好</h3>
-                <p>复制后可直接粘贴到 Suno、Udio 或其他音乐生成工具。</p>
-              </div>
-              <pre>{result.prompt}</pre>
-              <button className="copy-button" onClick={copyPrompt}>
-                <Icon name={copyState === 'copied' ? 'check' : 'copy'} size={18} />
-                {copyState === 'copied' ? '已复制到剪贴板' : copyState === 'failed' ? '复制失败，请手动选择' : '复制完整 Prompt'}
-              </button>
-            </div>
+              {tab === 'notes' && (
+                <div className="tab-panel notes-panel">
+                  <div className="producer-note">
+                    <span className="section-label">PRODUCER'S NOTE · 制作手记</span>
+                    <h3>为什么它听起来像<br />{result.mood.description}</h3>
+                    <p>故事里的“{result.keywords.slice(0, 3).join('、')}”决定了它的颜色。我们用{result.mood.instruments.join('、')}，把情绪控制在克制而真实的范围里。</p>
+                  </div>
+                  <div className="music-dna production-data">
+                    <span className="section-label">折叠在唱片背面的制作参数</span>
+                    <div className="dna-grid">
+                      <div><small>速度</small><strong>{result.mood.tempo}</strong><span>BPM</span></div>
+                      <div><small>调性</small><strong>{result.mood.key.split(' ')[0]}</strong><span>{result.mood.scale === 'minor' ? '小调' : '明亮'}</span></div>
+                      <div><small>能量</small><strong>{result.mood.energy}</strong><span>/ 100</span></div>
+                    </div>
+                    <div className="instrument-list">
+                      {result.mood.instruments.map((instrument) => <span key={instrument}>{instrument}</span>)}
+                    </div>
+                  </div>
+                  <details className="advanced-record-tools">
+                    <summary>
+                      <span><small>OPTIONAL CREATIVE MATERIAL</small>把它继续发展成完整歌曲</span>
+                      <Icon name="arrow" size={17} />
+                    </summary>
+                    <p>纯器乐唱片已经完成。这里保留歌词草稿和专业制作说明，只在你需要继续创作时使用。</p>
+                    <div className="studio-actions">
+                      <button onClick={downloadLyrics}><Icon name="download" size={16} />导出创作素材</button>
+                      <button onClick={copyPrompt}>
+                        <Icon name={copyState === 'copied' ? 'check' : 'copy'} size={16} />
+                        {copyState === 'copied' ? '制作说明已复制' : copyState === 'failed' ? '复制失败' : '复制制作说明'}
+                      </button>
+                    </div>
+                    <details className="prompt-disclosure">
+                      <summary>查看完整制作说明</summary>
+                      <pre>{result.prompt}</pre>
+                    </details>
+                  </details>
+                </div>
               )}
             </>
           )}
 
-          {!sharedView && <button className="again-button" onClick={reset}>再讲一个故事 <Icon name="arrow" size={16} /></button>}
+          {!sharedView && <button className="again-button" onClick={startOwnStory}>制作下一张私人唱片 <Icon name="arrow" size={16} /></button>}
         </section>
       )}
 
@@ -637,7 +692,7 @@ function App() {
               <button onClick={handleShareLink} disabled={linkState === 'sharing'}>
                 <span className="release-option-icon"><Icon name={linkState === 'copied' || linkState === 'shared' ? 'check' : 'share'} /></span>
                 <span>
-                  <strong>{linkState === 'copied' ? '作品链接已复制' : linkState === 'shared' ? '已打开系统分享' : linkState === 'failed' ? '链接分享失败' : '分享可播放作品链接'}</strong>
+                  <strong>{linkState === 'copied' ? '唱片链接已复制' : linkState === 'shared' ? '已打开系统分享' : linkState === 'failed' ? '链接分享失败' : '发送可播放的唱片链接'}</strong>
                   <small>朋友点开即可听旋律、读故事</small>
                 </span>
                 <Icon name="arrow" size={16} />
@@ -693,7 +748,7 @@ function App() {
           <aside className="history-sheet" role="dialog" aria-modal="true" aria-label="唱片架" onClick={(event) => event.stopPropagation()}>
             <div className="sheet-handle" />
             <div className="sheet-heading">
-              <div><span className="eyebrow">YOUR STORIES</span><h2>作品盒子</h2></div>
+              <div><span className="eyebrow">YOUR PRIVATE RECORDS</span><h2>私人唱片架</h2></div>
               <button onClick={() => setHistoryOpen(false)}>关闭</button>
             </div>
             {history.length ? (
@@ -710,7 +765,7 @@ function App() {
                 ))}
               </div>
             ) : (
-              <div className="empty-history"><Icon name="history" size={32} /><p>你的第一首歌<br />会出现在这里</p></div>
+              <div className="empty-history"><Icon name="history" size={32} /><p>你的第一张私人唱片<br />会出现在这里</p></div>
             )}
           </aside>
         </div>

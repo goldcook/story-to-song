@@ -100,7 +100,7 @@ async function createAlbumCover(result: SongResult) {
   context.fillStyle = '#292823'
   context.font = '600 28px "DM Sans", sans-serif'
   context.letterSpacing = '5px'
-  context.fillText('STORY INTO SOUND', 190, 122)
+  context.fillText('A PRIVATE RECORD', 190, 122)
 
   context.font = '600 74px "Noto Serif SC", "Songti SC", serif'
   const titleLines = wrapText(context, `《${result.title}》`, 760, 2)
@@ -118,7 +118,7 @@ async function createAlbumCover(result: SongResult) {
   context.fillStyle = 'rgba(41, 40, 35, .45)'
   context.font = '500 23px "DM Sans", sans-serif'
   context.letterSpacing = '2px'
-  context.fillText('叙音 XIYIN · INSTRUMENTAL STORY 01', 94, 1010)
+  context.fillText('叙音 XIYIN · PRIVATE RECORD 01', 94, 1010)
 
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((blob) => {
@@ -248,8 +248,8 @@ export async function shareAlbum(
     new File([assets.audio], `${name}-纯音乐.wav`, { type: 'audio/wav' }),
   ]
   const shareData = {
-    title: `《${result.title}》· 叙音`,
-    text: `${result.theme}。从这个故事里生成了一段 ${Math.round(result.mood.tempo)} BPM 的${result.mood.label}旋律。\n\n${result.story.slice(0, 120)}`,
+    title: `《${result.title}》· 一张叙音私人唱片`,
+    text: `${result.theme}。这段真实生活被做成了一张有封面和专属原声的私人唱片。\n\n${result.story.slice(0, 120)}`,
     url: createShareUrl(result),
     files,
   }
@@ -274,8 +274,8 @@ export async function shareAlbumLink(result: SongResult) {
   if (navigator.share) {
     try {
       await navigator.share({
-        title: `《${result.title}》· 叙音`,
-        text: `${result.theme}。这是由一段真实故事生成的私人旋律。`,
+        title: `《${result.title}》· 一张叙音私人唱片`,
+        text: `${result.theme}。这是一张由真实生活做成的私人唱片。`,
         url,
       })
       return 'shared' as const
