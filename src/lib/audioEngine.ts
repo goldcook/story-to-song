@@ -1,4 +1,5 @@
 import type { MoodId, SongResult } from '../types'
+import { hasAffirmedStoryTerm } from './storyEngine'
 
 const NOTE_FREQUENCIES: Record<string, number> = {
   C: 261.63,
@@ -197,11 +198,12 @@ export function preloadAudioSamples() {
 }
 
 function getStoryScene(story: string, fallback: Arrangement['ambience']): StoryScene {
-  const home = /外婆|爷爷|奶奶|妈妈|爸爸|家人|回家|院子|故乡/.test(story)
-  const rain = /下雨|雨里|雨夜|雨声|雨滴|暴雨/.test(story)
-  const transit = /火车|地铁|车站|站台|公路|开车|城市|出发/.test(story)
-  const celestial = /夜晚|夏夜|凌晨|星星|星空|月亮|月光/.test(story)
-  const water = /大海|海面|海边|湖边|河边|浪花|海风/.test(story)
+  const includes = (...terms: string[]) => hasAffirmedStoryTerm(story, terms)
+  const home = includes('外婆', '爷爷', '奶奶', '妈妈', '爸爸', '家人', '回家', '院子', '故乡')
+  const rain = includes('下雨', '雨里', '雨夜', '雨声', '雨滴', '暴雨')
+  const transit = includes('火车', '地铁', '车站', '站台', '公路', '开车', '城市', '出发')
+  const celestial = includes('夜晚', '夏夜', '凌晨', '星星', '星空', '月亮', '月光')
+  const water = includes('大海', '海面', '海边', '湖边', '河边', '浪花', '海风')
   const label = rain
     ? '雨夜空间'
     : transit
@@ -225,6 +227,17 @@ function getStoryScene(story: string, fallback: Arrangement['ambience']): StoryS
   }
 }
 
+function shouldUseCelestialAccents(result: SongResult, scene: StoryScene) {
+  return scene.celestial && result.analysis.dimensions.hope + result.analysis.dimensions.joy > 0.42
+}
+
+function shouldUseRestrainedShaker(result: SongResult, arrangement: Arrangement) {
+  const { grief, isolation, hope, agency } = result.analysis.dimensions
+  return arrangement.percussion === 'none'
+    && hope + agency > 0.72
+    && grief + isolation < 0.58
+}
+
 export function getArrangementTracks(result: SongResult): ArrangementTrack[] {
   const arrangement = getArrangement(result)
   const scene = getStoryScene(result.story, arrangement.ambience)
@@ -234,8 +247,11 @@ export function getArrangementTracks(result: SongResult): ArrangementTrack[] {
     { id: 'lead', label: leadNames[arrangement.lead], role: '主题旋律' },
     { id: 'pad', label: padNames[arrangement.pad], role: '情绪和声' },
     { id: 'bass', label: '大提琴低音', role: '低频叙事线' },
-    { id: 'counterline', label: '钢琴与吉他回应', role: '后半段变奏' },
   ]
+
+  if (result.analysis.dimensions.isolation < 0.62) {
+    tracks.push({ id: 'counterline', label: '钢琴与吉他回应', role: '后半段变奏' })
+  }
 
   if (arrangement.percussion !== 'none') {
     tracks.push({
@@ -246,10 +262,10 @@ export function getArrangementTracks(result: SongResult): ArrangementTrack[] {
   }
   if (scene.home) tracks.push({ id: 'memory', label: '原声吉他泛音', role: '家的记忆' })
   if (scene.transit) tracks.push({ id: 'transit', label: '木质移动节拍', role: '旅途推进' })
-  if (scene.celestial) tracks.push({ id: 'stars', label: '木琴星点', role: '夜空高光' })
+  if (shouldUseCelestialAccents(result, scene)) tracks.push({ id: 'stars', label: '木琴星点', role: '夜空高光' })
   if (result.analysis.dimensions.openness > 0.34) tracks.push({ id: 'openness', label: '开阔吉他泛音', role: '自由与远方' })
   if (result.analysis.dimensions.isolation > 0.46) tracks.push({ id: 'silence', label: '低音留白', role: '孤独与停顿' })
-  if (arrangement.percussion === 'none') tracks.push({ id: 'brush', label: '实录细沙锤', role: '克制律动' })
+  if (shouldUseRestrainedShaker(result, arrangement)) tracks.push({ id: 'brush', label: '实录细沙锤', role: '克制律动' })
   tracks.push({
     id: 'ambience',
     label: scene.rain ? '雨幕空气感' : scene.water ? '海风空气层' : scene.home ? '磁带空气感' : '空间空气层',
@@ -1250,7 +1266,7 @@ function scheduleComposition(
           )
         }
       }
-    } else if (arrangement.percussion === 'none' && isLift) {
+    } else if (shouldUseRestrainedShaker(result, arrangement) && isLift) {
       scheduleRecordedShaker(context, buses, sampleBank, noiseBuffer, barStart + beat * 1.02, 0.012, false, -0.28)
       scheduleRecordedShaker(context, buses, sampleBank, noiseBuffer, barStart + beat * 3.02, 0.01, true, 0.28)
     }
@@ -1260,7 +1276,7 @@ function scheduleComposition(
       scheduleRecordedWoodblock(context, buses, sampleBank, barStart + beat * 2.5, 0.016, 0.2)
     }
 
-    if (scene.celestial && result.analysis.dimensions.hope + result.analysis.dimensions.joy > 0.42 && !isIntro && !isOutro && barIndex % 2 === 1) {
+    if (shouldUseCelestialAccents(result, scene) && !isIntro && !isOutro && barIndex % 2 === 1) {
       const starDegree = degreeSemitone(scale, barIndex + 4)
       scheduleAcousticBell(context, buses, sampleBank, noteFrequency(root, starDegree, 1), barStart + beat * 3.25, beat * 0.45, 0.01, 0.35)
     }

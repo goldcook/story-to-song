@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { getArrangementTracks, getSongPreviewDuration, playSongPreview, preloadAudioSamples } from './lib/audioEngine'
-import { generateSong, getAlternateTitle, samples } from './lib/storyEngine'
+import { assessStorySafety, generateSong, getAlternateTitle, samples } from './lib/storyEngine'
 import {
   createShareUrl,
   getAlbumVisual,
@@ -36,6 +36,37 @@ function getStrongestDimensions(result: SongResult, limit = 5) {
     .filter(([, value]) => value >= 0.12)
     .sort((a, b) => b[1] - a[1])
     .slice(0, limit)
+}
+
+function getListeningSummary(result: SongResult) {
+  const primaryDimension = {
+    nostalgic: 'nostalgia',
+    joyful: 'joy',
+    melancholy: 'grief',
+    hopeful: 'hope',
+    tense: 'tension',
+    tender: 'tenderness',
+    calm: 'calm',
+  }[result.mood.id] as keyof StoryEmotionDimensions
+  const layers = getStrongestDimensions(result, 4)
+    .filter(([key]) => key !== primaryDimension)
+    .slice(0, 2)
+    .map(([key]) => DIMENSION_LABELS[key])
+  const movement = {
+    rising: '结尾逐渐转向微光',
+    falling: '结尾留下更深的停顿',
+    bittersweet: '温暖与失落并存',
+    steady: '情绪缓慢而连贯地展开',
+  }[result.analysis.direction]
+  return layers.length
+    ? `以${result.mood.label}为底色，${movement}，同时保留${layers.join('与')}。`
+    : `以${result.mood.label}为底色，${movement}，用克制的层次完成这段旋律。`
+}
+
+function getEnergyLabel(energy: number) {
+  if (energy >= 72) return '充沛'
+  if (energy >= 46) return '起伏'
+  return '克制'
 }
 
 interface SpeechRecognitionEventLike {
@@ -76,6 +107,7 @@ function restoreHistoryItem(value: unknown): SongResult | null {
     || typeof item.story !== 'string'
     || !item.story.trim()
     || typeof item.title !== 'string') return null
+  if (assessStorySafety(item.story) === 'crisis') return null
   const moodId = item.mood && MOOD_IDS.includes(item.mood.id as typeof MOOD_IDS[number])
     ? item.mood.id
     : undefined
@@ -200,16 +232,43 @@ function AlbumArtwork({ result, compact = false, mini = false }: { result: SongR
 }
 
 function ActualPosterPreview({ result, poster }: { result: SongResult; poster: Blob }) {
-  const [posterUrl] = useState(() => URL.createObjectURL(poster))
+  const [posterUrl, setPosterUrl] = useState('')
+  const [posterLoaded, setPosterLoaded] = useState(false)
   useEffect(() => {
-    return () => URL.revokeObjectURL(posterUrl)
-  }, [posterUrl])
+    const nextUrl = URL.createObjectURL(poster)
+    const timer = window.setTimeout(() => setPosterUrl(nextUrl), 0)
+    return () => {
+      window.clearTimeout(timer)
+      URL.revokeObjectURL(nextUrl)
+    }
+  }, [poster])
 
-  return <div className="poster-preview actual-poster"><img src={posterUrl} alt={`《${result.title}》故事海报预览`} /></div>
+  return (
+    <div className="poster-preview actual-poster">
+      {!posterLoaded && (
+        <>
+          <AlbumArtwork result={result} />
+          <div className="poster-preview-footer">
+            <i />
+            <span>“{result.excerpt}”</span>
+            <small>{new Date(result.createdAt).getFullYear()} · XIYIN</small>
+          </div>
+        </>
+      )}
+      {posterUrl && (
+        <img
+          className={posterLoaded ? 'loaded' : ''}
+          src={posterUrl}
+          alt={`《${result.title}》故事海报预览`}
+          onLoad={() => setPosterLoaded(true)}
+        />
+      )}
+    </div>
+  )
 }
 
 function PosterPreview({ result, poster }: { result: SongResult; poster?: Blob }) {
-  if (poster) return <ActualPosterPreview result={result} poster={poster} />
+  if (poster) return <ActualPosterPreview key={`${result.id}:${result.title}:${poster.size}`} result={result} poster={poster} />
 
   return (
     <div className="poster-preview">
@@ -244,6 +303,7 @@ function App() {
   const [shareAssets, setShareAssets] = useState<AlbumAssets | null>(null)
   const [shareState, setShareState] = useState<'preparing' | 'ready' | 'partial' | 'sharing' | 'shared' | 'downloaded' | 'failed'>('preparing')
   const [storyExpanded, setStoryExpanded] = useState(false)
+  const [careNotice, setCareNotice] = useState(false)
   const audioRef = useRef<Awaited<ReturnType<typeof playSongPreview>> | null>(null)
   const progressTimerRef = useRef<number | null>(null)
   const playbackRequestRef = useRef(0)
@@ -258,6 +318,7 @@ function App() {
   const historyDialogRef = useRef<HTMLElement | null>(null)
   const shareCloseRef = useRef<HTMLButtonElement | null>(null)
   const historyCloseRef = useRef<HTMLButtonElement | null>(null)
+  const careNoticeRef = useRef<HTMLDivElement | null>(null)
   const previewDuration = result ? getSongPreviewDuration(result.mood.tempo) : 0
   const arrangementTracks = result ? getArrangementTracks(result) : []
   const draftTracks = draftResult ? getArrangementTracks(draftResult) : []
@@ -283,6 +344,18 @@ function App() {
   useEffect(() => {
     if (result) void preloadAudioSamples()
   }, [result])
+
+  useEffect(() => {
+    if (!careNotice) return
+    const frame = window.requestAnimationFrame(() => {
+      const notice = careNoticeRef.current
+      if (!notice) return
+      const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      notice.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'center' })
+      notice.focus({ preventScroll: true })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [careNotice])
 
   useEffect(() => {
     document.title = result ? `《${result.title}》 · 叙音私人唱片` : '叙音 · 把一段生活做成私人唱片'
@@ -376,6 +449,13 @@ function App() {
 
   const createSong = () => {
     if (story.trim().length < MIN_STORY_LENGTH) return
+    if (assessStorySafety(story) === 'crisis') {
+      recognitionRef.current?.stop()
+      clearCreationTimers()
+      setCareNotice(true)
+      return
+    }
+    setCareNotice(false)
     recognitionRef.current?.stop()
     clearCreationTimers()
     const requestId = ++creationRequestRef.current
@@ -489,7 +569,10 @@ function App() {
         const speechResult = event.results[index]
         if (speechResult.isFinal !== false) transcript += speechResult[0].transcript
       }
-      if (transcript) setStory((current) => appendStory(current, transcript))
+      if (transcript) {
+        setCareNotice(false)
+        setStory((current) => appendStory(current, transcript))
+      }
     }
     recognition.onend = () => setIsListening(false)
     recognition.onerror = () => setIsListening(false)
@@ -688,6 +771,7 @@ function App() {
     setShareOpen(false)
     setHistoryOpen(false)
     setStoryExpanded(false)
+    setCareNotice(false)
     window.history.replaceState({}, '', window.location.pathname)
   }
 
@@ -772,7 +856,10 @@ function App() {
             </div>
             <textarea
               value={story}
-              onChange={(event) => setStory(event.target.value.slice(0, MAX_STORY_LENGTH))}
+              onChange={(event) => {
+                setCareNotice(false)
+                setStory(event.target.value.slice(0, MAX_STORY_LENGTH))
+              }}
               placeholder={replyTo ? '不用评价原故事，只写它让你想起的那个人、那个瞬间……' : '比如：那年夏天，外婆每天都会在院子里给我讲故事……'}
               aria-label="输入你的故事"
             />
@@ -784,19 +871,25 @@ function App() {
               <span className="privacy-note">本站不上传故事文本</span>
             </div>
           </div>
+          {careNotice && (
+            <div ref={careNoticeRef} className="care-notice" role="alert" tabIndex={-1}>
+              <span>先照顾此刻的你</span>
+              <p>如果这写的是你现在的状态，叙音不会继续制作这张唱片。请立即联系一位你信任的人或身边能陪你的人；如果你可能马上伤害自己，请联系当地急救服务或前往最近的急诊。你不需要一个人处理这些。</p>
+            </div>
+          )}
           <p className={`story-guidance ${story.trim().length > 0 && story.trim().length < MIN_STORY_LENGTH ? 'needs-more' : ''}`}>
             {story.trim().length > 0 && story.trim().length < MIN_STORY_LENGTH
               ? `再写 ${MIN_STORY_LENGTH - story.trim().length} 个字，就能开始制作`
               : '写到谁、哪个瞬间，以及一个你最记得的细节。'}
           </p>
-          <button className="create-button" disabled={story.trim().length < MIN_STORY_LENGTH} onClick={createSong}>
+          <button className="create-button" disabled={story.trim().length < MIN_STORY_LENGTH || careNotice} onClick={createSong}>
             <Icon name="spark" /><span>制作我的私人唱片</span><small>约 26 秒</small>
           </button>
           <div className="sample-block">
             <span>可以从一个自然的时刻开始</span>
             <div className="sample-row">
               {samples.map((sample) => (
-                <button key={sample.label} onClick={() => { setReplyTo(null); setStory(sample.story) }}>
+                <button key={sample.label} onClick={() => { setReplyTo(null); setCareNotice(false); setStory(sample.story) }}>
                   {sample.label}<Icon name="arrow" size={14} />
                 </button>
               ))}
@@ -932,7 +1025,10 @@ function App() {
           )}
 
           {sharedView ? (
-            <div className="shared-story-content">
+              <div className="shared-story-content">
+              {result.analysis.sensitivity === 'sensitive' && (
+                <p className="sensitive-record-note">这张唱片记录了一段可能令人不适的经历，请按自己的节奏阅读。</p>
+              )}
               <div className="shared-story-card">
                 <span className="section-label">THE STORY BEHIND THE RECORD</span>
                 <blockquote>{result.story}</blockquote>
@@ -943,6 +1039,7 @@ function App() {
               </div>
               <div className="shared-soundscape">
                 <span className="section-label">这张唱片用了这些声音</span>
+                <p>{getListeningSummary(result)}</p>
                 <div>
                   {arrangementTracks.map((track) => <span key={track.id}>{track.label}</span>)}
                 </div>
@@ -1023,15 +1120,14 @@ function App() {
                   </div>
                   <div className="emotion-spectrum-card">
                     <div className="emotion-spectrum-heading">
-                      <div><span className="section-label">EMOTIONAL SPECTRUM</span><h3>故事不是一种情绪</h3></div>
-                      <small>{dimensionSpectrum.length} 个有效维度</small>
+                      <div><span className="section-label">STORY SPECTRUM</span><h3>故事的声音层次</h3></div>
+                      <small>主要层次</small>
                     </div>
                     <div className="emotion-spectrum-list">
                       {dimensionSpectrum.map(([key, value]) => (
                         <div className="emotion-spectrum-row" key={key}>
                           <span>{DIMENSION_LABELS[key]}</span>
-                          <i><b style={{ width: `${Math.round(value * 100)}%` }} /></i>
-                          <small>{Math.round(value * 100)}</small>
+                          <i role="img" aria-label={`${DIMENSION_LABELS[key]}是故事的${value >= 0.66 ? '突出' : value >= 0.38 ? '明显' : '轻微'}层次`}><b style={{ width: `${Math.round(value * 100)}%` }} /></i>
                         </div>
                       ))}
                     </div>
@@ -1061,17 +1157,17 @@ function App() {
                   <div className="producer-note">
                     <span className="section-label">PRODUCER'S NOTE · 制作手记</span>
                     <h3>为什么它听起来像<br />{result.mood.description}</h3>
-                    <p>{result.analysis.summary} 最终用{result.mood.instruments.join('、')}，把这些情绪放进同一段旋律，而不是只套用一个情绪标签。</p>
+                    <p>{result.analysis.summary} 最终以{arrangementTracks.slice(0, 4).map((track) => track.label).join('、')}为骨架，把这些情绪放进同一段旋律，而不是只套用一个情绪标签。</p>
                   </div>
                   <div className="music-dna production-data">
                     <span className="section-label">折叠在唱片背面的制作参数</span>
                     <div className="dna-grid">
                       <div><small>速度</small><strong>{result.mood.tempo}</strong><span>BPM</span></div>
                       <div><small>调性</small><strong>{result.mood.key.split(' ')[0]}</strong><span>{result.mood.scale === 'minor' ? '小调' : result.mood.scale === 'major' ? '大调' : '五声音阶'}</span></div>
-                      <div><small>能量</small><strong>{result.mood.energy}</strong><span>/ 100</span></div>
+                      <div><small>动态</small><strong>{getEnergyLabel(result.mood.energy)}</strong><span>层次</span></div>
                     </div>
                     <div className="instrument-list">
-                      {result.mood.instruments.map((instrument) => <span key={instrument}>{instrument}</span>)}
+                      {arrangementTracks.slice(0, 6).map((track) => <span key={track.id}>{track.label}</span>)}
                     </div>
                   </div>
                   <details className="advanced-record-tools">
@@ -1121,6 +1217,10 @@ function App() {
               </div>
               <button ref={shareCloseRef} onClick={() => setShareOpen(false)}>关闭</button>
             </div>
+
+            {result.analysis.sensitivity === 'sensitive' && (
+              <p className="sensitive-share-note">海报会使用保护性摘要；可播放链接仍会展示完整故事，转发前请确认你愿意让收件人看到原文。</p>
+            )}
 
             <PosterPreview result={result} poster={shareAssets?.poster} />
 

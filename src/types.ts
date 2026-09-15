@@ -28,6 +28,8 @@ export interface LyricSection {
 }
 
 export type NarrativeDirection = 'rising' | 'falling' | 'bittersweet' | 'steady'
+export type StorySensitivity = 'standard' | 'sensitive'
+export type StorySafety = StorySensitivity | 'crisis'
 
 export interface StoryEmotionDimensions {
   joy: number
@@ -47,6 +49,7 @@ export interface StoryEmotionAnalysis {
   arousal: number
   direction: NarrativeDirection
   confidence: number
+  sensitivity: StorySensitivity
   dimensions: StoryEmotionDimensions
   evidence: string[]
   summary: string

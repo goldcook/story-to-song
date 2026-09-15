@@ -1,5 +1,5 @@
 import { renderSongPreviewWav } from './audioEngine'
-import { generateSong } from './storyEngine'
+import { assessStorySafety, generateSong, hasAffirmedStoryTerm } from './storyEngine'
 import type { MoodId, SongResult } from '../types'
 
 export type AlbumMotif = 'memory' | 'rain' | 'horizon' | 'constellation' | 'window' | 'orbit'
@@ -30,17 +30,20 @@ function hash(value: string) {
 
 export function getAlbumVisual(result: SongResult): AlbumVisual {
   const seed = hash(result.story)
-  const motif: AlbumMotif = /(雨|站台|车站|伞)/.test(result.story)
+  const includes = (...terms: string[]) => hasAffirmedStoryTerm(result.story, terms)
+  const motif: AlbumMotif = result.analysis.sensitivity === 'sensitive'
+    ? 'orbit'
+    : includes('雨', '站台', '车站', '伞')
     ? 'rain'
-    : /(海|火车|远方|出发|公路)/.test(result.story)
+    : includes('海', '火车', '远方', '出发', '公路')
       ? 'horizon'
-      : /(照片|礼物|书信|日记|蒲扇)/.test(result.story)
+      : includes('照片', '礼物', '书信', '日记', '蒲扇')
         ? 'memory'
-        : /(星星|月亮|夜空|夏夜)/.test(result.story)
+        : includes('星星', '月亮', '夜空', '夏夜')
           ? 'constellation'
-          : /(城市|房间|窗|家|院子)/.test(result.story)
+          : includes('城市', '房间', '窗', '家', '院子')
             ? 'window'
-            : /(外婆|爷爷|奶奶|妈妈|爸爸|孩子|朋友|爱人)/.test(result.story)
+            : includes('外婆', '爷爷', '奶奶', '妈妈', '爸爸', '孩子', '朋友', '爱人')
             ? 'memory'
             : 'orbit'
   return {
@@ -211,7 +214,8 @@ async function createAlbumCover(result: SongResult) {
 
   context.fillStyle = 'rgba(41, 40, 35, .68)'
   context.font = '500 30px "Noto Serif SC", "Songti SC", serif'
-  const storyLines = wrapText(context, result.story, 870, 2)
+  const coverStory = result.analysis.sensitivity === 'sensitive' ? result.excerpt : result.story
+  const storyLines = wrapText(context, coverStory, 870, 2)
   storyLines.forEach((line, index) => context.fillText(line, 94, 884 + index * 49))
 
   context.fillStyle = 'rgba(41, 40, 35, .45)'
@@ -371,6 +375,7 @@ export function readSharedResult() {
     const payload = JSON.parse(new TextDecoder().decode(bytes)) as SharedRecordPayload
     if (typeof payload.story !== 'string' || ![1, 2, 3].includes(payload.version ?? 0)) return null
     const story = payload.story.slice(0, 1000)
+    if (assessStorySafety(story) === 'crisis') return null
     if (payload.version === 1) return generateSong(story)
     const generated = generateSong(story, {
       id: typeof payload.id === 'string' ? payload.id : undefined,
@@ -386,11 +391,15 @@ export function readSharedResult() {
       secondaryMood: payload.version === 3 && typeof payload.secondaryMood === 'string'
         ? payload.secondaryMood.slice(0, 12)
         : generated.secondaryMood,
-      theme: typeof payload.theme === 'string' ? payload.theme.slice(0, 32) : generated.theme,
+      theme: generated.analysis.sensitivity === 'sensitive'
+        ? generated.theme
+        : typeof payload.theme === 'string' ? payload.theme.slice(0, 32) : generated.theme,
       keywords: Array.isArray(payload.keywords)
         ? payload.keywords.filter((item): item is string => typeof item === 'string').slice(0, 5)
         : generated.keywords,
-      excerpt: typeof payload.excerpt === 'string' ? payload.excerpt.slice(0, 60) : generated.excerpt,
+      excerpt: generated.analysis.sensitivity === 'sensitive'
+        ? generated.excerpt
+        : typeof payload.excerpt === 'string' ? payload.excerpt.slice(0, 60) : generated.excerpt,
     }
   } catch {
     return null
@@ -438,9 +447,11 @@ export async function shareAlbum(
     assets.audio ? new File([assets.audio], `${name}-纯音乐.wav`, { type: 'audio/wav' }) : null,
   ].filter((file): file is File => Boolean(file))
   const subject = result.keywords[0] || '这段生活'
-  const shareText = result.replyTo
+  const shareText = result.analysis.sensitivity === 'sensitive'
+    ? `我为一段不容易说出口的经历留下一张私人唱片《${result.title}》，想谨慎地分享给你。`
+    : result.replyTo
     ? `听完《${result.replyTo.title}》，我把想起的那段生活做成了《${result.title}》。这是一张回应唱片，想发回给你。`
-    : `我把关于${subject}的那段生活，做成了《${result.title}》。有些话没说出口，想请你听完。`
+    : `我把关于${subject}的那段生活，做成了《${result.title}》。这是为这段生活留下的一张私人唱片。`
   const shareData = {
     title: `《${result.title}》· 一张叙音私人唱片`,
     text: shareText,
@@ -464,9 +475,11 @@ export async function shareAlbum(
 export async function shareAlbumLink(result: SongResult) {
   const url = createShareUrl(result)
   const subject = result.keywords[0] || '这段生活'
-  const shareText = result.replyTo
+  const shareText = result.analysis.sensitivity === 'sensitive'
+    ? `我为一段不容易说出口的经历留下一张私人唱片《${result.title}》，想谨慎地分享给你。`
+    : result.replyTo
     ? `听完《${result.replyTo.title}》，我把想起的那段生活做成了《${result.title}》。这是一张回应唱片，想发回给你。`
-    : `我把关于${subject}的那段生活，做成了《${result.title}》。有些话没说出口，想请你听完。`
+    : `我把关于${subject}的那段生活，做成了《${result.title}》。这是为这段生活留下的一张私人唱片。`
   if (navigator.share) {
     try {
       await navigator.share({

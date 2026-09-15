@@ -7,6 +7,7 @@ import type {
   SongResult,
   StoryEmotionAnalysis,
   StoryEmotionDimensions,
+  StorySafety,
 } from '../types'
 
 type MoodDefinition = MoodProfile & { words: string[] }
@@ -157,13 +158,94 @@ interface EmotionHit {
 
 const EMOTION_RULES: EmotionRule[] = [
   {
-    phrases: ['再也没有见过', '再也没见过', '再也见不到', '再也回不去了', '永远失去了', '离我而去', '离开了我', '没有说出口', '没说出口', '不在了', '去世', '离世', '失去', '告别', '分手', '错过', '回不去了'],
+    phrases: ['喜极而泣', '开心得哭了', '开心才哭了', '幸福得哭了', '感动得哭了'],
+    label: '喜悦的眼泪',
+    valence: 0.88,
+    arousal: 0.68,
+    weight: 4.5,
+    moods: { joyful: 1, tender: 0.28 },
+    dimensions: { joy: 1, tenderness: 0.42, hope: 0.18 },
+  },
+  {
+    phrases: ['终于自由了', '终于自由', '重获自由', '获得自由', '第一次感到自由', '害怕也可以和自由同时发生'],
+    label: '释放与自由',
+    valence: 0.74,
+    arousal: 0.48,
+    weight: 4.1,
+    moods: { hopeful: 1, joyful: 0.18 },
+    dimensions: { hope: 0.82, agency: 0.76, openness: 1, calm: 0.16 },
+  },
+  {
+    phrases: ['决定好好生活', '继续好好生活', '继续生活', '继续走下去', '带着爱继续', '学会释怀', '学会和解', '接受这一切', '开始新的生活', '往前走'],
+    label: '带着经历前行',
+    valence: 0.6,
+    arousal: 0.38,
+    weight: 3.9,
+    moods: { hopeful: 1, tender: 0.25 },
+    dimensions: { hope: 0.86, agency: 1, tenderness: 0.24, calm: 0.18 },
+  },
+  {
+    phrases: ['感到轻松', '有一点轻松', '松了一口气', '如释重负', '开始期待', '有些期待', '期待下一站', '很期待', '盼望'],
+    label: '轻松与期待',
+    valence: 0.7,
+    arousal: 0.42,
+    weight: 3.8,
+    moods: { hopeful: 1, joyful: 0.18, calm: 0.12 },
+    dimensions: { hope: 1, agency: 0.48, openness: 0.42, calm: 0.36 },
+  },
+  {
+    phrases: ['开始认真吃饭', '好好吃饭', '开始照顾自己', '愿意重新见朋友', '重新见朋友', '重新和人联系', '愿意出门', '愿意再次出门'],
+    label: '重新回到生活',
+    valence: 0.56,
+    arousal: 0.32,
+    weight: 3.6,
+    moods: { hopeful: 1, tender: 0.2 },
+    dimensions: { hope: 0.78, agency: 0.82, calm: 0.22, tenderness: 0.18 },
+  },
+  {
+    phrases: ['再也没有见过', '再也没见过', '再也见不到', '再也回不去了', '永远失去了', '离开这个世界', '离开了我们', '离开了我', '离我而去', '他离开了', '她离开了', '你离开了', '没有说出口', '没说出口', '不在了', '去世', '离世', '失去', '告别', '分手', '错过', '回不去了'],
     label: '失去与告别',
     valence: -0.95,
     arousal: 0.42,
     weight: 4.8,
     moods: { melancholy: 1, nostalgic: 0.22 },
     dimensions: { grief: 1, isolation: 0.58, nostalgia: 0.28 },
+  },
+  {
+    phrases: ['彻底失望', '失望', '被拒绝', '被否定', '被否掉', '被辞退', '被解雇', '落选', '失败了', '失败', '落空'],
+    label: '失望与受挫',
+    valence: -0.78,
+    arousal: 0.5,
+    weight: 3.8,
+    moods: { melancholy: 1, tense: 0.28 },
+    dimensions: { grief: 0.82, tension: 0.42, isolation: 0.18 },
+  },
+  {
+    phrases: ['不再期待', '不抱希望', '失去期待', '没有盼头', '看不到希望'],
+    label: '期待落空',
+    valence: -0.72,
+    arousal: 0.36,
+    weight: 3.7,
+    moods: { melancholy: 1, nostalgic: 0.12 },
+    dimensions: { grief: 0.78, isolation: 0.28, tension: 0.16 },
+  },
+  {
+    phrases: ['舍不得', '不舍', '留恋'],
+    label: '不舍与留恋',
+    valence: -0.44,
+    arousal: 0.26,
+    weight: 2.8,
+    moods: { nostalgic: 1, melancholy: 0.52, tender: 0.2 },
+    dimensions: { nostalgia: 0.82, grief: 0.46, tenderness: 0.22 },
+  },
+  {
+    phrases: ['遭受家暴', '被家暴', '被侵犯', '被伤害', '被殴打', '长期被打', '被虐待', '虐待', '性侵'],
+    label: '创伤与伤害',
+    valence: -0.92,
+    arousal: 0.72,
+    weight: 4.4,
+    moods: { melancholy: 0.82, tense: 0.65 },
+    dimensions: { grief: 0.86, tension: 0.75, isolation: 0.48 },
   },
   {
     phrases: ['没有希望', '从此没有', '再也没有', '无法挽回', '来不及了', '只剩下', '再也不', '一个人', '独自一人'],
@@ -202,7 +284,7 @@ const EMOTION_RULES: EmotionRule[] = [
     dimensions: { tension: 1, isolation: 0.22 },
   },
   {
-    phrases: ['愤怒', '生气', '争吵', '冲突', '背叛', '欺骗', '呐喊', '战争', '追赶', '逃跑', '撞击', '着火'],
+    phrases: ['愤怒', '生气', '怨恨', '恨', '争吵', '冲突', '背叛', '欺骗', '呐喊', '战争', '追赶', '逃跑', '撞击', '着火'],
     label: '冲突与愤怒',
     valence: -0.84,
     arousal: 0.96,
@@ -211,7 +293,7 @@ const EMOTION_RULES: EmotionRule[] = [
     dimensions: { tension: 1, agency: 0.38 },
   },
   {
-    phrases: ['终于走出来', '终于放下', '没那么难过了', '不再害怕', '熬过来了', '重新站起来', '重新出发', '会好起来', '新的开始', '继续向前'],
+    phrases: ['终于走出来', '终于放下', '没那么难过了', '不再难过', '不再害怕', '不再孤独', '不再生气', '松了一口气', '熬过来了', '重新站起来', '重新出发', '会好起来', '新的开始', '继续向前'],
     label: '走出低谷',
     valence: 0.78,
     arousal: 0.56,
@@ -229,7 +311,7 @@ const EMOTION_RULES: EmotionRule[] = [
     dimensions: { joy: 1, hope: 0.22, agency: 0.24 },
   },
   {
-    phrases: ['终于等到', '看到希望', '还有希望', '相信', '勇气', '坚持', '梦想', '未来', '明天', '天亮', '微光', '出发'],
+    phrases: ['终于等到天亮', '熬到天亮', '看到希望', '还有希望', '相信明天', '相信未来', '期待未来', '走向未来', '明天会更好', '相信', '勇气', '坚持', '梦想', '微光'],
     label: '希望与前行',
     valence: 0.67,
     arousal: 0.54,
@@ -238,7 +320,7 @@ const EMOTION_RULES: EmotionRule[] = [
     dimensions: { hope: 1, agency: 0.62, openness: 0.24 },
   },
   {
-    phrases: ['陪伴', '拥抱', '牵手', '照顾', '守着', '温暖', '轻轻', '晚安', '心动', '爱着', '爱你', '谢谢', '礼物'],
+    phrases: ['陪伴', '陪着', '拥抱', '牵手', '照顾', '守着', '温暖', '轻轻', '晚安', '心动', '感动', '爱着', '爱你', '谢谢', '礼物'],
     label: '爱与陪伴',
     valence: 0.62,
     arousal: 0.28,
@@ -265,7 +347,7 @@ const EMOTION_RULES: EmotionRule[] = [
     dimensions: { nostalgia: 1, tenderness: 0.08 },
   },
   {
-    phrases: ['离开', '再见', '结束', '沉默'],
+    phrases: ['再见', '结束', '沉默'],
     label: '离开与沉默',
     valence: -0.38,
     arousal: 0.34,
@@ -277,18 +359,28 @@ const EMOTION_RULES: EmotionRule[] = [
 
 const SEMANTIC_DIMENSIONS: Array<{
   pattern: RegExp
-  label: string
   dimension: keyof StoryEmotionDimensions
   strength: number
 }> = [
-  { pattern: /自由|远方|海面|大海|海边|旷野|天空|公路|风里|飞翔/, label: '自由与空间', dimension: 'openness', strength: 0.72 },
-  { pattern: /决定|选择|辞职|重新|出发|继续|走向|跨过|奔跑|坚持/, label: '行动与选择', dimension: 'agency', strength: 0.72 },
-  { pattern: /独自|一个人|无人|空荡荡|只剩我|孤身/, label: '孤独与留白', dimension: 'isolation', strength: 0.78 },
-  { pattern: /外婆|爷爷|奶奶|妈妈|爸爸|孩子|爱人|家人/, label: '亲密关系', dimension: 'tenderness', strength: 0.34 },
-  { pattern: /雨夜|下雨|雨里|夜晚|凌晨|月光|星空/, label: '夜色与空气', dimension: 'calm', strength: 0.2 },
+  { pattern: /自由|远方|海面|大海|海边|旷野|天空|公路|风里|飞翔/, dimension: 'openness', strength: 0.72 },
+  { pattern: /决定|选择|辞职|重新|出发|继续|走向|跨过|奔跑|坚持|下一站/, dimension: 'agency', strength: 0.72 },
+  { pattern: /独自|一个人|无人|空荡荡|只剩我|孤身/, dimension: 'isolation', strength: 0.78 },
+  { pattern: /外婆|爷爷|奶奶|妈妈|爸爸|孩子|爱人|家人/, dimension: 'tenderness', strength: 0.34 },
+  { pattern: /雨夜|下雨|雨里|夜晚|凌晨|月光|星空/, dimension: 'calm', strength: 0.2 },
 ]
 
-const NEGATION_PATTERN = /并没有|并不|不是|不再|从未|从没|没有|未能|不|没|未|别/g
+const NEGATION_PATTERN = /并没有|并不|不是|不再|从未|从没|没有|未能|未曾|尚未|还未|别再|别去|别让|别想|不|没/g
+const ADVERSE_EVENT_PATTERN = /失望|被拒绝|被否定|被否掉|落选|失败|被辞退|被解雇|落空/
+const IRONY_PATTERN = /可真|真是太|呵呵|真够|太好了/
+const PAST_RECOVERY_PATTERN = /(曾经|以前|那时|那时候|过去|去年|几年前|一度).{0,24}(不想活|想死|自杀).{0,36}(现在|后来|如今).{0,16}(安全|活下来|走出来|好起来|不再)/
+const CRISIS_EXPRESSION_PATTERN = /不想继续活(?:着|下去)?|不想活(?:了|下去)?|想去死|想死(?:了)?|想自杀|活不下去|不如死|一了百了|结束自己|结束生命|活着.{0,5}(?:没意思|没有意义)/
+const CRISIS_METHOD_PATTERN = /(?:想|要|准备|准备好|打算|计划|决定|会|就).{0,10}(?:去死|自杀|结束自己|结束生命|从.{0,5}跳下去|跳楼|割腕|吞药|喝药|上吊)/
+const CRISIS_FAREWELL_PATTERN = /最后一天.{0,16}(?:告别所有人|跟所有人告别|遗言)/
+const CRISIS_PROTECTIVE_PATTERN = /(?:我)?(?:决定|计划|已经|现在)?(?:不再|不会|不想|不愿意|不)(?:去死|死|自杀|结束自己|结束生命|跳楼|割腕|吞药|喝药|上吊)|(?:阻止|劝阻|救下|拦住).{0,8}(?:自杀|跳楼|割腕|吞药)/g
+const CRISIS_CURRENT_MARKERS = ['现在', '此刻', '马上', '今天', '今晚']
+const CRISIS_PAST_MARKERS = ['曾经', '以前', '过去', '那时', '去年', '几年前', '一度']
+const CRISIS_THIRD_PARTY_MARKERS = ['他', '她', '有人', '新闻', '小说', '电影', '角色', '患者']
+const TRAUMA_PATTERN = /被侵犯|性侵|强奸|猥亵|家暴|殴打|虐待|长期被打|暴力伤害|被骚扰/
 const INTENSIFIER_PATTERN = /非常|特别|真的|实在|太|极其|无比|越来越|很$/
 const DOWNTONER_PATTERN = /有点|一点|稍微|偶尔$/
 const PRE_CONTRAST_PATTERN = /^(虽然|尽管|即使)/
@@ -344,11 +436,28 @@ function isNegated(text: string, index: number) {
   return negations.length % 2 === 1
 }
 
+export function hasAffirmedStoryTerm(story: string, terms: string[]) {
+  return splitClauses(story).some((clause) => terms.some((term) => {
+    let index = clause.text.indexOf(term)
+    while (index >= 0) {
+      if (!isNegated(clause.text, index)) return true
+      index = clause.text.indexOf(term, index + term.length)
+    }
+    return false
+  }))
+}
+
 function phraseIntensity(text: string, index: number) {
   const prefix = text.slice(Math.max(0, index - 5), index)
   if (INTENSIFIER_PATTERN.test(prefix)) return 1.28
   if (DOWNTONER_PATTERN.test(prefix)) return 0.78
   return 1
+}
+
+function isIronicPositive(clauses: StoryClause[], clause: StoryClause, rule: EmotionRule) {
+  if (rule.valence <= 0.2 || !IRONY_PATTERN.test(clause.text)) return false
+  const nearbyText = `${clause.text} ${clauses[clause.index + 1]?.text ?? ''}`
+  return ADVERSE_EVENT_PATTERN.test(nearbyText)
 }
 
 function collectEmotionHits(clauses: StoryClause[]) {
@@ -365,9 +474,10 @@ function collectEmotionHits(clauses: StoryClause[]) {
           const end = index + phrase.length
           fromIndex = end
           if (occupied.some(([start, finish]) => index < finish && end > start)) continue
-          occupied.push([index, end])
           const negated = isNegated(clause.text, index)
           if (negated && rule.valence < 0) continue
+          if (!negated && isIronicPositive(clauses, clause, rule)) continue
+          occupied.push([index, end])
           const intensity = phraseIntensity(clause.text, index)
           const strength = rule.weight * clause.weight * intensity * (negated ? 0.9 : 1)
           hits.push({
@@ -391,7 +501,7 @@ function collectEmotionHits(clauses: StoryClause[]) {
   return hits
 }
 
-function buildEmotionDimensions(story: string, hits: EmotionHit[]) {
+function buildEmotionDimensions(clauses: StoryClause[], hits: EmotionHit[]) {
   const raw = Object.fromEntries(DIMENSION_KEYS.map((key) => [key, 0])) as unknown as StoryEmotionDimensions
   hits.forEach((hit) => {
     Object.entries(hit.dimensions).forEach(([dimension, contribution]) => {
@@ -399,17 +509,67 @@ function buildEmotionDimensions(story: string, hits: EmotionHit[]) {
     })
   })
   const semanticEvidence: string[] = []
-  SEMANTIC_DIMENSIONS.forEach(({ pattern, dimension, strength }) => {
-    const match = story.match(pattern)?.[0]
-    if (!match) return
-    raw[dimension] += strength * 4
-    semanticEvidence.push(match)
+  clauses.forEach((clause) => {
+    SEMANTIC_DIMENSIONS.forEach(({ pattern, dimension, strength }) => {
+      const matcher = new RegExp(pattern.source, 'g')
+      let match = matcher.exec(clause.text)
+      while (match) {
+        if (!isNegated(clause.text, match.index)) {
+          raw[dimension] += strength * clause.weight * 4
+          semanticEvidence.push(match[0])
+        }
+        match = matcher.exec(clause.text)
+      }
+    })
   })
   const dimensions = Object.fromEntries(DIMENSION_KEYS.map((key) => [
     key,
     clamp(1 - Math.exp(-raw[key] / 4.4), 0, 1),
   ])) as unknown as StoryEmotionDimensions
   return { dimensions, semanticEvidence }
+}
+
+function lastMarkerIndex(text: string, markers: string[]) {
+  return Math.max(...markers.map((marker) => text.lastIndexOf(marker)))
+}
+
+function isCurrentFirstPersonExpression(text: string, index: number, length: number) {
+  const before = text.slice(Math.max(0, index - 36), index)
+  const around = text.slice(Math.max(0, index - 24), Math.min(text.length, index + length + 18))
+  const selfIndex = Math.max(before.lastIndexOf('我'), before.lastIndexOf('自己'))
+  const thirdPartyIndex = lastMarkerIndex(before, CRISIS_THIRD_PARTY_MARKERS)
+  const currentIndex = lastMarkerIndex(before, CRISIS_CURRENT_MARKERS)
+  const pastIndex = lastMarkerIndex(before, CRISIS_PAST_MARKERS)
+  const historicalContext = pastIndex > currentIndex
+    && !/(但|可是|可我|却|然而|不过)/.test(before.slice(pastIndex))
+  if (historicalContext) return false
+  if (thirdPartyIndex >= 0 && thirdPartyIndex >= selfIndex) return false
+  return selfIndex > thirdPartyIndex || currentIndex >= 0 || lastMarkerIndex(around, CRISIS_THIRD_PARTY_MARKERS) < 0
+}
+
+function containsCurrentCrisisExpression(story: string) {
+  const crisisText = story
+    .replace(/(?:我)?(?:不是|并非)不想(?:死|自杀|结束自己|结束生命|跳楼|割腕)/g, '我想死')
+    .replace(PAST_RECOVERY_PATTERN, '')
+    .replace(CRISIS_PROTECTIVE_PATTERN, '')
+    .replace(/想死心|死了这条心/g, '')
+  const patterns = [CRISIS_EXPRESSION_PATTERN, CRISIS_METHOD_PATTERN, CRISIS_FAREWELL_PATTERN]
+  return patterns.some((pattern) => {
+    const matcher = new RegExp(pattern.source, 'g')
+    let match = matcher.exec(crisisText)
+    while (match) {
+      if (isCurrentFirstPersonExpression(crisisText, match.index, match[0].length)) return true
+      match = matcher.exec(crisisText)
+    }
+    return false
+  })
+}
+
+export function assessStorySafety(story: string): StorySafety {
+  const normalized = story.trim().replace(/\s+/g, ' ')
+  if (containsCurrentCrisisExpression(normalized)) return 'crisis'
+  if (TRAUMA_PATTERN.test(normalized)) return 'sensitive'
+  return 'standard'
 }
 
 function weightedValence(hits: EmotionHit[]) {
@@ -419,7 +579,12 @@ function weightedValence(hits: EmotionHit[]) {
 }
 
 function getNarrativeDirection(clauses: StoryClause[], hits: EmotionHit[]): NarrativeDirection {
-  if (!clauses.length) return 'steady'
+  if (!clauses.length || !hits.length) return 'steady'
+  const hitClauseIndexes = hits.map((hit) => hit.clauseIndex)
+  const firstHitIndex = Math.min(...hitClauseIndexes)
+  const lastHitIndex = Math.max(...hitClauseIndexes)
+  const firstValence = weightedValence(hits.filter((hit) => hit.clauseIndex === firstHitIndex))
+  const lastValence = weightedValence(hits.filter((hit) => hit.clauseIndex === lastHitIndex))
   const midpoint = Math.max(1, Math.ceil(clauses.length / 2))
   const earlyHits = hits.filter((hit) => hit.clauseIndex < midpoint)
   const lateHits = hits.filter((hit) => hit.clauseIndex >= midpoint)
@@ -428,6 +593,8 @@ function getNarrativeDirection(clauses: StoryClause[], hits: EmotionHit[]): Narr
   const positiveStrength = hits.filter((hit) => hit.valence > 0.2).reduce((total, hit) => total + hit.strength, 0)
   const negativeStrength = hits.filter((hit) => hit.valence < -0.2).reduce((total, hit) => total + hit.strength, 0)
 
+  if (lastValence > 0.18 && lastValence - firstValence > 0.42) return 'rising'
+  if (lastValence < -0.18 && firstValence - lastValence > 0.42) return 'falling'
   if (lateValence > 0.18 && lateValence - earlyValence > 0.42) return 'rising'
   if (lateValence < -0.18 && earlyValence - lateValence > 0.42) return 'falling'
   if (positiveStrength > 2.4 && negativeStrength > 2.4) return 'bittersweet'
@@ -503,7 +670,7 @@ function deriveMoodProfile(mood: MoodDefinition, analysis: Omit<StoryEmotionAnal
   if (dimensions.tension > 0.45) instruments.push('大提琴低音', '实录低鼓')
   if (dimensions.tenderness > 0.34) instruments.push('原声吉他', '大提琴和声')
   if (dimensions.openness > 0.34) instruments.push('吉他泛音', '开阔空气层')
-  if (dimensions.hope > 0.38) instruments.push('钢琴', '轻打击乐')
+  if (dimensions.hope > 0.38 && (dimensions.grief <= 0.38 || dimensions.tension > 0.54)) instruments.push('钢琴', '轻打击乐')
   if (dimensions.calm > 0.4 && dimensions.grief < 0.34) instruments.push('木琴泛音', '大提琴长音')
   instruments.push(...mood.instruments)
   return { ...mood, tempo, key, scale, energy, warmth, instruments: [...new Set(instruments)].slice(0, 4) }
@@ -512,6 +679,7 @@ function deriveMoodProfile(mood: MoodDefinition, analysis: Omit<StoryEmotionAnal
 export function analyzeStoryEmotion(story: string) {
   const clauses = splitClauses(story)
   const hits = collectEmotionHits(clauses)
+  const safety = assessStorySafety(story)
   const moodScores = Object.fromEntries(Object.keys(MOODS).map((id) => [id, 0])) as Record<MoodId, number>
   hits.forEach((hit) => {
     Object.entries(hit.moods).forEach(([moodId, score]) => {
@@ -525,7 +693,7 @@ export function analyzeStoryEmotion(story: string) {
     ? clamp(hits.reduce((total, hit) => total + hit.arousal * hit.strength, 0) / totalStrength, 0, 1)
     : 0.18
   const direction = getNarrativeDirection(clauses, hits)
-  const { dimensions, semanticEvidence } = buildEmotionDimensions(story, hits)
+  const { dimensions, semanticEvidence } = buildEmotionDimensions(clauses, hits)
   if (!hits.length && semanticEvidence.length === 0) dimensions.calm = 0.42
 
   if (direction === 'rising') {
@@ -556,7 +724,15 @@ export function analyzeStoryEmotion(story: string) {
   }, []).slice(0, 5)
   const margin = ranked[0].score - ranked[1].score
   const confidence = clamp(0.42 + Math.min(0.34, totalStrength / 24) + Math.min(0.18, margin / 18), 0.42, 0.94)
-  const analysisBase = { valence, arousal, direction, confidence, dimensions, evidence }
+  const analysisBase = {
+    valence,
+    arousal,
+    direction,
+    confidence,
+    sensitivity: safety === 'standard' ? 'standard' : 'sensitive',
+    dimensions,
+    evidence,
+  } as const
   const mood = deriveMoodProfile(ranked[0].mood, analysisBase)
   return {
     analysis: {
@@ -609,8 +785,8 @@ function splitStory(story: string) {
 }
 
 function extractKeywords(story: string, mood: MoodDefinition) {
-  const found = STORY_IMAGES.filter((word) => story.includes(word))
-  const moodWords = mood.words.filter((word) => story.includes(word) && word.length > 1)
+  const found = STORY_IMAGES.filter((word) => hasAffirmedStoryTerm(story, [word]))
+  const moodWords = mood.words.filter((word) => word.length > 1 && hasAffirmedStoryTerm(story, [word]))
   const unique = [...new Set([...found, ...moodWords])]
   return [...new Set([...unique, mood.label])].slice(0, 5)
 }
@@ -621,7 +797,8 @@ function shortLine(text: string, max = 13) {
   return stripped.slice(0, max).trim()
 }
 
-function buildStoryExcerpt(story: string, keywords: string[]) {
+function buildStoryExcerpt(story: string, keywords: string[], sensitivity: StoryEmotionAnalysis['sensitivity']) {
+  if (sensitivity === 'sensitive') return '这是一段不容易说出口的经历。'
   const sentences = story
     .split(/[。！？!?；;\n]+/)
     .map((sentence) => sentence.trim())
@@ -681,7 +858,8 @@ function buildLyrics(story: string, mood: MoodProfile, keywords: string[], seed:
   return { sections, hook: hook.join(' / ') }
 }
 
-function getTheme(story: string, mood: MoodProfile) {
+function getTheme(story: string, mood: MoodProfile, sensitivity: StoryEmotionAnalysis['sensitivity']) {
+  if (sensitivity === 'sensitive') return '关于一段不容易说出的经历'
   const rules = [
     { words: ['妈妈', '爸爸', '外婆', '爷爷', '奶奶', '家人'], theme: '关于家与陪伴' },
     { words: ['生日', '蛋糕', '烛光', '庆祝'], theme: '关于庆祝与长大' },
@@ -690,7 +868,7 @@ function getTheme(story: string, mood: MoodProfile) {
     { words: ['故乡', '老家'], theme: '关于离开与归来' },
     { words: ['梦想', '工作', '辞职', '出发', '重新'], theme: '关于选择与成长' },
   ]
-  return rules.find((rule) => rule.words.some((word) => story.includes(word)))?.theme
+  return rules.find((rule) => hasAffirmedStoryTerm(story, rule.words))?.theme
     ?? ({
       nostalgic: '关于想念与时间',
       joyful: '关于快乐的瞬间',
@@ -730,21 +908,29 @@ ${lyrics}
 歌曲时长 2 分 40 秒至 3 分 20 秒；普通话自然咬字；副歌旋律清晰易记；不要修改核心故事意象“${result.keywords.slice(0, 3).join('、')}”。`
 }
 
-function makeTitleCandidates(story: string, keywords: string[]) {
+function makeTitleCandidates(
+  story: string,
+  keywords: string[],
+  sensitivity: StoryEmotionAnalysis['sensitivity'] = 'standard',
+) {
+  if (sensitivity === 'sensitive') return ['未命名的那一页', '留在这里的一段话', '这一页没有名字']
+  const includes = (...terms: string[]) => hasAffirmedStoryTerm(story, terms)
   const image = keywords.find((keyword) => STORY_IMAGES.includes(keyword) && keyword.length <= 3)
   const detail = keywords.find((keyword) => keyword !== image && STORY_IMAGES.includes(keyword) && keyword.length <= 3)
   const candidates: string[] = []
 
-  if (/(生日|蛋糕|烛光)/.test(story)) candidates.push('生日烛光熄灭前')
-  if (story.includes('蒲扇')) candidates.push(story.includes('换我') ? '换我为你扇风' : '蒲扇里的夏夜')
-  if (story.includes('站台') && story.includes('雨')) candidates.push('雨停在站台')
-  if (story.includes('火车') && /(海|天亮)/.test(story)) candidates.push('天亮时，海在等我')
-  if (/(窗|窗外)/.test(story) && /(灯|灯光)/.test(story)) candidates.push('窗外最后一盏灯')
-  if (story.includes('照片')) candidates.push('照片背面的那一天')
-  if (/(书信|信)/.test(story)) candidates.push('一封刚拆开的信')
-  if (story.includes('回家') && /(外婆|爷爷|奶奶|妈妈|爸爸|故乡|老家|多年|去年)/.test(story)) candidates.push('回家以后风还记得')
-  if (image && /(告别|再见|离开)/.test(story)) candidates.push(`${image}没说完的再见`)
-  if (image && /(出发|远方|自由)/.test(story)) candidates.push(`越过${image}以后`)
+  if (includes('生日', '蛋糕', '烛光')) candidates.push('生日烛光熄灭前')
+  if (includes('蒲扇')) candidates.push(story.includes('换我') ? '换我为你扇风' : '蒲扇里的夏夜')
+  if (includes('站台') && includes('雨', '下雨')) candidates.push('雨停在站台')
+  if (includes('火车') && includes('海', '天亮')) candidates.push('天亮时，海在等我')
+  if (includes('火车', '列车') && includes('下一站', '晨光', '车窗')) candidates.push('晨光抵达下一站')
+  if (includes('城市') && includes('轻松', '期待', '下一站')) candidates.push('城市退向身后')
+  if (includes('窗', '窗外') && includes('灯', '灯光')) candidates.push('窗外最后一盏灯')
+  if (includes('照片')) candidates.push('照片背面的那一天')
+  if (includes('书信', '信')) candidates.push('一封刚拆开的信')
+  if (includes('回家') && includes('外婆', '爷爷', '奶奶', '妈妈', '爸爸', '故乡', '老家', '多年', '去年')) candidates.push('回家以后风还记得')
+  if (image && includes('告别', '再见', '离开')) candidates.push(`${image}没说完的再见`)
+  if (image && includes('出发', '远方', '自由')) candidates.push(`越过${image}以后`)
 
   candidates.push(
     ...(image ? [`${image}还在风里`, `把${image}留给夜色`] : []),
@@ -772,7 +958,6 @@ function getSecondaryMood(
   if (analysis.direction === 'rising'
     && analysis.valence > 0
     && analysis.dimensions.grief + analysis.dimensions.tension > 0.34) return '余悸'
-  if (analysis.direction === 'falling') return '失落'
   if (analysis.direction === 'bittersweet') return primaryMood === 'melancholy' ? '怀念' : '遗憾'
   const secondary = rankedMoods.find(({ mood, score }) => mood.id !== primaryMood && score > 0)
   return secondary?.mood.label ?? '克制'
@@ -797,9 +982,9 @@ export function generateSong(story: string, options: GenerateSongOptions = {}): 
     : emotionResult.analysis
   const secondaryMood = getSecondaryMood(mood.id, emotionResult.ranked, analysis)
   const keywords = extractKeywords(normalizedStory, moodDefinition)
-  const excerpt = buildStoryExcerpt(normalizedStory, keywords)
+  const excerpt = buildStoryExcerpt(normalizedStory, keywords, analysis.sensitivity)
   const { sections, hook } = buildLyrics(normalizedStory, mood, keywords, seed)
-  const titleCandidates = makeTitleCandidates(normalizedStory, keywords)
+  const titleCandidates = makeTitleCandidates(normalizedStory, keywords, analysis.sensitivity)
   const base = {
     id: options.id ?? `${options.createdAt ?? Date.now()}-${seed}`,
     createdAt: options.createdAt ?? Date.now(),
@@ -807,7 +992,7 @@ export function generateSong(story: string, options: GenerateSongOptions = {}): 
     title: options.title ?? titleCandidates[0],
     mood,
     secondaryMood,
-    theme: getTheme(normalizedStory, mood),
+    theme: getTheme(normalizedStory, mood, analysis.sensitivity),
     keywords,
     excerpt,
     hook,
@@ -819,7 +1004,7 @@ export function generateSong(story: string, options: GenerateSongOptions = {}): 
 }
 
 export function getAlternateTitle(result: SongResult, offset: number) {
-  const candidates = makeTitleCandidates(result.story, result.keywords)
+  const candidates = makeTitleCandidates(result.story, result.keywords, result.analysis.sensitivity)
   const currentIndex = Math.max(0, candidates.indexOf(result.title))
   return candidates[(currentIndex + offset) % candidates.length]
 }
