@@ -20,6 +20,10 @@ const TARGET_PREVIEW_SECONDS = 26
 const RELEASE_TAIL_SECONDS = 0.65
 const SAMPLE_FETCH_TIMEOUT_MS = 10_000
 
+function clamp(value: number, minimum: number, maximum: number) {
+  return Math.min(maximum, Math.max(minimum, value))
+}
+
 interface MusicHandle {
   stop: () => void
   duration: number
@@ -76,6 +80,23 @@ const ARRANGEMENTS: Record<MoodId, Arrangement> = {
   tense: { lead: 'pluck', pad: 'bowed', percussion: 'full', ambience: 'air' },
   tender: { lead: 'piano', pad: 'warm', percussion: 'none', ambience: 'tape' },
   calm: { lead: 'bell', pad: 'warm', percussion: 'none', ambience: 'rain' },
+}
+
+function getArrangement(result: SongResult): Arrangement {
+  const base = ARRANGEMENTS[result.mood.id]
+  const { valence, direction, dimensions } = result.analysis
+  if (dimensions.tension > 0.54) {
+    return { ...base, lead: 'pluck', pad: 'bowed', percussion: 'full', ambience: dimensions.openness > 0.38 ? 'air' : base.ambience }
+  }
+  if (dimensions.grief > 0.38 || dimensions.isolation > 0.52) {
+    return { ...base, lead: dimensions.nostalgia > dimensions.grief * 0.8 ? 'pluck' : 'piano', pad: 'bowed', percussion: 'none' }
+  }
+  if (direction === 'rising' || dimensions.hope + dimensions.agency > 0.9) {
+    return { ...base, lead: 'piano', pad: dimensions.tension > 0.24 ? 'bowed' : 'warm', percussion: 'soft', ambience: 'air' }
+  }
+  if (dimensions.nostalgia > 0.46) return { ...base, lead: 'pluck', pad: 'bowed', percussion: 'soft', ambience: 'tape' }
+  if (dimensions.calm > 0.48 && valence >= -0.18) return { ...base, lead: 'bell', pad: 'warm', percussion: 'none' }
+  return base
 }
 
 const SAMPLE_DEFINITIONS: SampleDefinition[] = [
@@ -205,7 +226,7 @@ function getStoryScene(story: string, fallback: Arrangement['ambience']): StoryS
 }
 
 export function getArrangementTracks(result: SongResult): ArrangementTrack[] {
-  const arrangement = ARRANGEMENTS[result.mood.id]
+  const arrangement = getArrangement(result)
   const scene = getStoryScene(result.story, arrangement.ambience)
   const leadNames = { piano: '实录柔音钢琴', pluck: '实录原声吉他', bell: '实录木琴泛音' }
   const padNames = { warm: '大提琴室内和声', bowed: '大提琴弓弦层' }
@@ -226,6 +247,8 @@ export function getArrangementTracks(result: SongResult): ArrangementTrack[] {
   if (scene.home) tracks.push({ id: 'memory', label: '原声吉他泛音', role: '家的记忆' })
   if (scene.transit) tracks.push({ id: 'transit', label: '木质移动节拍', role: '旅途推进' })
   if (scene.celestial) tracks.push({ id: 'stars', label: '木琴星点', role: '夜空高光' })
+  if (result.analysis.dimensions.openness > 0.34) tracks.push({ id: 'openness', label: '开阔吉他泛音', role: '自由与远方' })
+  if (result.analysis.dimensions.isolation > 0.46) tracks.push({ id: 'silence', label: '低音留白', role: '孤独与停顿' })
   if (arrangement.percussion === 'none') tracks.push({ id: 'brush', label: '实录细沙锤', role: '克制律动' })
   tracks.push({
     id: 'ambience',
@@ -980,7 +1003,7 @@ function scheduleComposition(
   const reverb = createReverb(context, master, seed ^ 0x51f15e)
   const buses: AudioBuses = { dry: master, reverb }
   const noiseBuffer = createNoiseBuffer(context, 3, seed ^ 0xa53a9d)
-  const arrangement = ARRANGEMENTS[result.mood.id]
+  const arrangement = getArrangement(result)
   const scene = getStoryScene(result.story, arrangement.ambience)
   const beat = 60 / result.mood.tempo
   const bar = beat * 4
@@ -993,14 +1016,43 @@ function scheduleComposition(
     ? [[0, 5, 3, 6, 0, 5, 4, 0], [0, 3, 5, 4, 0, 6, 3, 0], [0, 6, 5, 3, 0, 4, 5, 0]]
     : [[0, 4, 5, 3, 0, 5, 3, 4], [0, 3, 4, 5, 0, 4, 3, 0], [0, 5, 3, 4, 0, 3, 5, 0]]
   const progression = progressionBanks[seed % progressionBanks.length]
-  const motifTemplates = [
+  const balancedMotifs = [
     [{ at: 0, degree: 0, length: 0.68 }, { at: 0.9, degree: 2, length: 0.55 }, { at: 2.05, degree: 4, length: 0.78 }, { at: 3.2, degree: 2, length: 0.72 }],
     [{ at: 0, degree: 1, length: 0.52 }, { at: 0.72, degree: 2, length: 0.7 }, { at: 1.9, degree: 5, length: 0.62 }, { at: 2.85, degree: 4, length: 1.02 }],
     [{ at: 0, degree: 4, length: 0.72 }, { at: 1.05, degree: 3, length: 0.52 }, { at: 1.82, degree: 2, length: 0.66 }, { at: 3.05, degree: 1, length: 0.86 }],
     [{ at: 0, degree: 2, length: 0.55 }, { at: 0.8, degree: 4, length: 0.82 }, { at: 2.1, degree: 6, length: 0.55 }, { at: 2.95, degree: 4, length: 0.95 }],
   ]
+  const descendingMotifs = [
+    [{ at: 0, degree: 5, length: 0.82 }, { at: 1.08, degree: 4, length: 0.64 }, { at: 2.08, degree: 2, length: 0.76 }, { at: 3.22, degree: 1, length: 1.12 }],
+    [{ at: 0.18, degree: 4, length: 0.72 }, { at: 1.2, degree: 3, length: 0.72 }, { at: 2.18, degree: 1, length: 0.9 }, { at: 3.42, degree: 0, length: 1.18 }],
+    [{ at: 0, degree: 3, length: 0.88 }, { at: 1.34, degree: 2, length: 0.62 }, { at: 2.35, degree: 0, length: 0.8 }, { at: 3.45, degree: -1, length: 1.05 }],
+  ]
+  const risingMotifs = [
+    [{ at: 0, degree: 0, length: 0.58 }, { at: 0.86, degree: 1, length: 0.56 }, { at: 1.78, degree: 3, length: 0.7 }, { at: 2.9, degree: 4, length: 1.1 }],
+    [{ at: 0.12, degree: 1, length: 0.62 }, { at: 1.05, degree: 2, length: 0.58 }, { at: 2.02, degree: 4, length: 0.7 }, { at: 3.08, degree: 5, length: 1.02 }],
+  ]
+  const tenseMotifs = [
+    [{ at: 0, degree: 0, length: 0.42 }, { at: 0.64, degree: 4, length: 0.44 }, { at: 1.46, degree: 1, length: 0.4 }, { at: 2.24, degree: 5, length: 0.46 }, { at: 3.18, degree: 3, length: 0.68 }],
+    [{ at: 0, degree: 5, length: 0.4 }, { at: 0.72, degree: 2, length: 0.48 }, { at: 1.58, degree: 6, length: 0.42 }, { at: 2.4, degree: 1, length: 0.48 }, { at: 3.28, degree: 4, length: 0.62 }],
+  ]
+  const motifTemplates = result.analysis.dimensions.tension > 0.5
+    ? tenseMotifs
+    : result.analysis.dimensions.grief > 0.42
+      ? descendingMotifs
+      : result.analysis.direction === 'rising' || result.analysis.dimensions.hope > 0.48
+        ? risingMotifs
+        : balancedMotifs
   const baseMotif = seed % motifTemplates.length
   const coreMotif = motifTemplates[baseMotif]
+  const leadOctave = result.analysis.dimensions.grief + result.analysis.dimensions.isolation > 0.72 ? -1 : 0
+  const spaciousness = result.analysis.dimensions.openness
+  const sparseness = clamp(
+    result.analysis.dimensions.grief * 0.45
+      + result.analysis.dimensions.calm * 0.35
+      + result.analysis.dimensions.isolation * 0.5,
+    0,
+    1,
+  )
   const introBars = bars >= 10 ? 2 : 1
   const liftStart = Math.max(introBars + 2, Math.floor(bars * 0.58))
   const outroIndex = bars - 1
@@ -1092,7 +1144,13 @@ function scheduleComposition(
     }
 
     const arpeggioPattern = [0, 1, 2, 1, 0, 1, 2, 1]
-    const arpeggioSteps = isOutro ? 0 : isIntro ? 2 : isLift ? 8 : 4
+    const arpeggioSteps = isOutro
+      ? 0
+      : isIntro
+        ? 2
+        : sparseness > 0.62
+          ? isLift ? 4 : 2
+          : isLift ? 8 : 4
     for (let step = 0; step < arpeggioSteps; step += 1) {
       const chordDegree = chordDegrees[arpeggioPattern[step] % chordDegrees.length]
       const semitone = degreeSemitone(scale, chordDegree)
@@ -1104,9 +1162,9 @@ function scheduleComposition(
       const noteStart = Math.max(barStart, gridStart + playingOffset)
       const humanVelocity = 0.92 + seededUnit(seed, barIndex * 31 + step) * 0.14
       if (arrangement.lead === 'pluck') {
-        scheduleAcousticPiano(context, buses, sampleBank, noteFrequency(root, semitone, -1), noteStart, beat * 0.72, 0.016 * dynamics * humanVelocity, step % 2 ? 0.2 : -0.2)
+        scheduleAcousticPiano(context, buses, sampleBank, noteFrequency(root, semitone, -1), noteStart, beat * 0.72, 0.016 * dynamics * humanVelocity, (step % 2 ? 0.2 : -0.2) * (1 + spaciousness * 0.7))
       } else {
-        scheduleAcousticGuitar(context, buses, sampleBank, noiseBuffer, noteFrequency(root, semitone, -1), noteStart, beat * 0.62, 0.024 * dynamics * humanVelocity, step % 2 ? 0.23 : -0.23)
+        scheduleAcousticGuitar(context, buses, sampleBank, noiseBuffer, noteFrequency(root, semitone, -1), noteStart, beat * 0.62, 0.024 * dynamics * humanVelocity, (step % 2 ? 0.23 : -0.23) * (1 + spaciousness * 0.7))
       }
     }
 
@@ -1119,7 +1177,7 @@ function scheduleComposition(
     }))
     const liftedMotif = coreMotif.map((note, noteIndex) => ({
       ...note,
-      degree: note.degree + (noteIndex % 2 === 0 ? 2 : 1),
+      degree: note.degree + (result.analysis.direction === 'falling' ? 0 : noteIndex % 2 === 0 ? 2 : 1),
       length: note.length * (noteIndex === coreMotif.length - 1 ? 1.28 : 0.92),
     }))
     const motif = isOutro
@@ -1137,7 +1195,7 @@ function scheduleComposition(
       const timing = isOutro ? 0 : (seededUnit(seed, barIndex * 43 + noteIndex) - 0.5) * 0.042
       const noteStart = Math.max(barStart, barStart + note.at * beat + timing)
       const velocity = 0.91 + seededUnit(seed ^ 0x71c3, barIndex * 47 + noteIndex) * 0.17
-      const octave = isLift && noteIndex === 2 && arrangement.lead !== 'pluck' ? 1 : 0
+      const octave = leadOctave + (isLift && noteIndex === 2 && arrangement.lead !== 'pluck' && result.analysis.valence >= -0.1 ? 1 : 0)
       const frequency = noteFrequency(root, degreeSemitone(scale, note.degree), octave)
       const pan = noteIndex % 2 ? 0.1 : -0.1
       const leadVolume = (arrangement.lead === 'piano' ? 0.048 : arrangement.lead === 'pluck' ? 0.044 : 0.036)
@@ -1154,7 +1212,7 @@ function scheduleComposition(
       }
     })
 
-    if (isLift && !isOutro) {
+    if (isLift && !isOutro && result.analysis.dimensions.isolation < 0.62) {
       const counterDegree = chordRoot + (barIndex % 2 === 0 ? 4 : 2)
       const counterFrequency = noteFrequency(root, degreeSemitone(scale, counterDegree), -1)
       const counterStart = barStart + beat * (barIndex % 2 === 0 ? 1.45 : 2.25)
@@ -1202,7 +1260,7 @@ function scheduleComposition(
       scheduleRecordedWoodblock(context, buses, sampleBank, barStart + beat * 2.5, 0.016, 0.2)
     }
 
-    if (scene.celestial && !isIntro && !isOutro && barIndex % 2 === 1) {
+    if (scene.celestial && result.analysis.dimensions.hope + result.analysis.dimensions.joy > 0.42 && !isIntro && !isOutro && barIndex % 2 === 1) {
       const starDegree = degreeSemitone(scale, barIndex + 4)
       scheduleAcousticBell(context, buses, sampleBank, noteFrequency(root, starDegree, 1), barStart + beat * 3.25, beat * 0.45, 0.01, 0.35)
     }
@@ -1214,6 +1272,21 @@ function scheduleComposition(
 
     if (scene.water && !isIntro && !isOutro && barIndex % 3 === 1) {
       scheduleAcousticBell(context, buses, sampleBank, noteFrequency(root, degreeSemitone(scale, 4), -1), barStart + beat * 1.5, beat * 1.2, 0.009, -0.4)
+    }
+
+    if (spaciousness > 0.34 && !isIntro && !isOutro && barIndex % 2 === 0) {
+      const openDegree = degreeSemitone(scale, chordRoot + 4)
+      scheduleAcousticGuitar(
+        context,
+        buses,
+        sampleBank,
+        noiseBuffer,
+        noteFrequency(root, openDegree, 1),
+        barStart + beat * 3.38,
+        beat * 0.56,
+        0.011 + spaciousness * 0.007,
+        barIndex % 4 === 0 ? -0.48 : 0.48,
+      )
     }
   }
 

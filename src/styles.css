@@ -495,6 +495,16 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
 .mood-orb i { position: absolute; border-radius: 45% 55% 50% 48%; background: var(--mood-color); opacity: .19; inset: 10px; animation: orbit 7s linear infinite; }
 .mood-orb i:nth-child(2) { inset: 20px 5px 8px 18px; opacity: .31; animation-direction: reverse; }
 .mood-orb i:nth-child(3) { inset: 26px; opacity: .8; }
+.emotion-spectrum-card { margin-top: 14px; padding: 20px; border: 1px solid var(--line); background: rgba(246,242,234,.48); }
+.emotion-spectrum-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.emotion-spectrum-heading h3 { margin: 8px 0 17px; font-family: 'Noto Serif SC', serif; font-size: 16px; }
+.emotion-spectrum-heading > small { padding-top: 3px; color: var(--mood-color); font-size: 7px; letter-spacing: .08em; white-space: nowrap; }
+.emotion-spectrum-list { display: grid; gap: 10px; }
+.emotion-spectrum-row { display: grid; grid-template-columns: 46px 1fr 24px; gap: 10px; align-items: center; }
+.emotion-spectrum-row > span { color: #5d5951; font-family: 'Noto Serif SC', serif; font-size: 10px; }
+.emotion-spectrum-row > i { height: 3px; overflow: hidden; background: color-mix(in srgb, var(--mood-color) 10%, #ddd7cc); }
+.emotion-spectrum-row > i b { display: block; height: 100%; background: var(--mood-color); }
+.emotion-spectrum-row > small { color: #9d988d; font-size: 8px; text-align: right; }
 .music-dna, .story-echo { margin-top: 14px; padding: 20px; border: 1px solid var(--line); background: rgba(246,242,234,.4); }
 .dna-grid { display: grid; grid-template-columns: repeat(3,1fr); margin: 14px 0; }
 .dna-grid > div { border-right: 1px solid var(--line); padding-left: 13px; }

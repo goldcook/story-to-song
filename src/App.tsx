@@ -11,13 +11,32 @@ import {
   shareAlbumLink,
   type AlbumAssets,
 } from './lib/shareAlbum'
-import type { ReplyReference, SongResult } from './types'
+import type { ReplyReference, SongResult, StoryEmotionDimensions } from './types'
 
 type View = 'compose' | 'creating' | 'result'
 type ResultTab = 'sleeve' | 'sound' | 'notes'
 type PlaybackState = 'idle' | 'loading' | 'playing' | 'error'
 const RESULT_TABS: Array<[ResultTab, string]> = [['sleeve', '唱片内页'], ['sound', '声音设计'], ['notes', '制作手记']]
 const CREATION_STATUS = ['正在理解故事的情绪曲线', '正在写主题动机与回应旋律', '正在调入真实乐器与场景声', '正在完成混音与唱片母带', '私人唱片已经刻好']
+const DIMENSION_LABELS: Record<keyof StoryEmotionDimensions, string> = {
+  joy: '喜悦',
+  grief: '失落',
+  tension: '紧张',
+  tenderness: '温柔',
+  nostalgia: '怀念',
+  hope: '希望',
+  calm: '平静',
+  agency: '行动感',
+  openness: '空间感',
+  isolation: '孤独感',
+}
+
+function getStrongestDimensions(result: SongResult, limit = 5) {
+  return (Object.entries(result.analysis.dimensions) as Array<[keyof StoryEmotionDimensions, number]>)
+    .filter(([, value]) => value >= 0.12)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+}
 
 interface SpeechRecognitionEventLike {
   resultIndex: number
@@ -64,7 +83,7 @@ function restoreHistoryItem(value: unknown): SongResult | null {
     id: item.id.slice(0, 96),
     createdAt: item.createdAt,
     title: item.title.slice(0, 32),
-    moodId,
+    moodId: item.analysis ? moodId : undefined,
     replyTo: typeof item.replyTo?.title === 'string' ? { title: item.replyTo.title.slice(0, 32) } : undefined,
   })
   return rebuilt
@@ -242,6 +261,8 @@ function App() {
   const previewDuration = result ? getSongPreviewDuration(result.mood.tempo) : 0
   const arrangementTracks = result ? getArrangementTracks(result) : []
   const draftTracks = draftResult ? getArrangementTracks(draftResult) : []
+  const dimensionSpectrum = result ? getStrongestDimensions(result) : []
+  const draftDimensions = draftResult ? getStrongestDimensions(draftResult, 3) : []
   const isPlaying = playbackState === 'playing'
   const isAudioLoading = playbackState === 'loading'
 
@@ -793,7 +814,7 @@ function App() {
           <div className="creating-copy">
             <span className="eyebrow"><i /> PRESSING YOUR RECORD</span>
             <h2>正在为这段生活<br />安排一段声音</h2>
-            <p>{draftResult ? `${draftResult.theme}，会以${draftResult.mood.label}为主色，留一点${draftResult.secondaryMood}。` : '从文字里留下画面，再为它组织旋律。'}</p>
+            <p>{draftResult ? draftResult.analysis.summary : '从文字里留下画面，再为它组织旋律。'}</p>
           </div>
           {draftResult && (
             <div className="creating-insight">
@@ -819,7 +840,7 @@ function App() {
           </div>
           <div className="creating-steps">
             {[
-              draftResult ? `读出 ${draftResult.mood.label}与${draftResult.secondaryMood}` : '理解这段故事的情绪曲线',
+              draftResult ? `读出 ${draftDimensions.map(([key]) => DIMENSION_LABELS[key]).join('、')}` : '理解这段故事的情绪曲线',
               draftResult ? `把 ${draftResult.keywords.slice(0, 2).join('与')}写进主题` : '写下可以被记住的主题旋律',
               draftResult ? `安排 ${draftTracks.length} 层真实声音` : '调入真实乐器与场景声',
               '混音、收束，并刻下这张唱片',
@@ -1000,6 +1021,21 @@ function App() {
                     </div>
                     <div className="mood-orb"><i /><i /><i /></div>
                   </div>
+                  <div className="emotion-spectrum-card">
+                    <div className="emotion-spectrum-heading">
+                      <div><span className="section-label">EMOTIONAL SPECTRUM</span><h3>故事不是一种情绪</h3></div>
+                      <small>{dimensionSpectrum.length} 个有效维度</small>
+                    </div>
+                    <div className="emotion-spectrum-list">
+                      {dimensionSpectrum.map(([key, value]) => (
+                        <div className="emotion-spectrum-row" key={key}>
+                          <span>{DIMENSION_LABELS[key]}</span>
+                          <i><b style={{ width: `${Math.round(value * 100)}%` }} /></i>
+                          <small>{Math.round(value * 100)}</small>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                   <div className="arrangement-card">
                     <div className="arrangement-heading">
                       <div><span className="section-label">SOUND DESIGN</span><h3>故事被放进这些声音里</h3></div>
@@ -1025,13 +1061,13 @@ function App() {
                   <div className="producer-note">
                     <span className="section-label">PRODUCER'S NOTE · 制作手记</span>
                     <h3>为什么它听起来像<br />{result.mood.description}</h3>
-                    <p>故事里的“{result.keywords.slice(0, 3).join('、')}”决定了它的颜色。我们用{result.mood.instruments.join('、')}，把情绪控制在克制而真实的范围里。</p>
+                    <p>{result.analysis.summary} 最终用{result.mood.instruments.join('、')}，把这些情绪放进同一段旋律，而不是只套用一个情绪标签。</p>
                   </div>
                   <div className="music-dna production-data">
                     <span className="section-label">折叠在唱片背面的制作参数</span>
                     <div className="dna-grid">
                       <div><small>速度</small><strong>{result.mood.tempo}</strong><span>BPM</span></div>
-                      <div><small>调性</small><strong>{result.mood.key.split(' ')[0]}</strong><span>{result.mood.scale === 'minor' ? '小调' : '明亮'}</span></div>
+                      <div><small>调性</small><strong>{result.mood.key.split(' ')[0]}</strong><span>{result.mood.scale === 'minor' ? '小调' : result.mood.scale === 'major' ? '大调' : '五声音阶'}</span></div>
                       <div><small>能量</small><strong>{result.mood.energy}</strong><span>/ 100</span></div>
                     </div>
                     <div className="instrument-list">

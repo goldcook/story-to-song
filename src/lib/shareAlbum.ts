@@ -319,8 +319,8 @@ export function prepareAlbumAssets(result: SongResult): Promise<AlbumAssets> {
 
 export function createShareUrl(result: SongResult) {
   const payload = JSON.stringify({
-    version: 2,
-    generator: 2,
+    version: 3,
+    generator: 3,
     id: result.id,
     createdAt: result.createdAt,
     story: result.story,
@@ -345,6 +345,7 @@ export function createShareUrl(result: SongResult) {
 
 interface SharedRecordPayload {
   version?: number
+  generator?: number
   id?: string
   createdAt?: number
   story?: string
@@ -368,21 +369,23 @@ export function readSharedResult() {
     const binary = atob(padded)
     const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0))
     const payload = JSON.parse(new TextDecoder().decode(bytes)) as SharedRecordPayload
-    if (typeof payload.story !== 'string' || ![1, 2].includes(payload.version ?? 0)) return null
+    if (typeof payload.story !== 'string' || ![1, 2, 3].includes(payload.version ?? 0)) return null
     const story = payload.story.slice(0, 1000)
     if (payload.version === 1) return generateSong(story)
     const generated = generateSong(story, {
       id: typeof payload.id === 'string' ? payload.id : undefined,
       createdAt: typeof payload.createdAt === 'number' ? payload.createdAt : undefined,
       title: typeof payload.title === 'string' ? payload.title.slice(0, 32) : undefined,
-      moodId: typeof payload.moodId === 'string' && ['nostalgic', 'joyful', 'melancholy', 'hopeful', 'tense', 'tender', 'calm'].includes(payload.moodId)
+      moodId: payload.generator === 3 && typeof payload.moodId === 'string' && ['nostalgic', 'joyful', 'melancholy', 'hopeful', 'tense', 'tender', 'calm'].includes(payload.moodId)
         ? payload.moodId as MoodId
         : undefined,
       replyTo: typeof payload.replyTo?.title === 'string' ? { title: payload.replyTo.title.slice(0, 32) } : undefined,
     })
     return {
       ...generated,
-      secondaryMood: typeof payload.secondaryMood === 'string' ? payload.secondaryMood.slice(0, 12) : generated.secondaryMood,
+      secondaryMood: payload.version === 3 && typeof payload.secondaryMood === 'string'
+        ? payload.secondaryMood.slice(0, 12)
+        : generated.secondaryMood,
       theme: typeof payload.theme === 'string' ? payload.theme.slice(0, 32) : generated.theme,
       keywords: Array.isArray(payload.keywords)
         ? payload.keywords.filter((item): item is string => typeof item === 'string').slice(0, 5)

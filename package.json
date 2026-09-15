@@ -7,14 +7,15 @@
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "test": "vitest run",
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
-    "vite": "latest",
-    "typescript": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "typescript": "latest",
+    "vite": "latest"
   },
   "devDependencies": {
     "@eslint/js": "latest",
@@ -24,6 +25,7 @@
     "eslint-plugin-react-hooks": "latest",
     "eslint-plugin-react-refresh": "latest",
     "globals": "latest",
-    "typescript-eslint": "latest"
+    "typescript-eslint": "latest",
+    "vitest": "^5.0.1"
   }
 }

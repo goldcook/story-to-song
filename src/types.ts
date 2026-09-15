@@ -27,6 +27,31 @@ export interface LyricSection {
   lines: string[]
 }
 
+export type NarrativeDirection = 'rising' | 'falling' | 'bittersweet' | 'steady'
+
+export interface StoryEmotionDimensions {
+  joy: number
+  grief: number
+  tension: number
+  tenderness: number
+  nostalgia: number
+  hope: number
+  calm: number
+  agency: number
+  openness: number
+  isolation: number
+}
+
+export interface StoryEmotionAnalysis {
+  valence: number
+  arousal: number
+  direction: NarrativeDirection
+  confidence: number
+  dimensions: StoryEmotionDimensions
+  evidence: string[]
+  summary: string
+}
+
 export interface ReplyReference {
   title: string
 }
@@ -44,5 +69,6 @@ export interface SongResult {
   hook: string
   lyrics: LyricSection[]
   prompt: string
+  analysis: StoryEmotionAnalysis
   replyTo?: ReplyReference
 }
