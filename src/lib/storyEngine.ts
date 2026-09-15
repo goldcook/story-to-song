@@ -25,7 +25,7 @@ const MOODS: Record<MoodId, MoodDefinition> = {
     energy: 42,
     warmth: 83,
     genre: '叙事民谣',
-    instruments: ['木吉他', '大提琴', '磁带底噪'],
+    instruments: ['木吉他', '大提琴', '柔音钢琴'],
     words: ['曾经', '小时候', '以前', '故乡', '老家', '记得', '回忆', '那年', '过去', '重逢', '照片', '往事', '青春'],
   },
   joyful: {
@@ -40,7 +40,7 @@ const MOODS: Record<MoodId, MoodDefinition> = {
     energy: 82,
     warmth: 76,
     genre: '轻快流行',
-    instruments: ['原声吉他', '大提琴', '低鼓与沙锤'],
+    instruments: ['原声吉他', '大提琴', '框鼓与沙锤'],
     words: ['开心', '快乐', '喜悦', '兴奋', '幸福', '惊喜', '庆祝', '欢呼', '大笑'],
   },
   melancholy: {
@@ -55,7 +55,7 @@ const MOODS: Record<MoodId, MoodDefinition> = {
     energy: 28,
     warmth: 38,
     genre: '卧室流行',
-    instruments: ['柔音钢琴', '大提琴', '雨幕空气感'],
+    instruments: ['柔音钢琴', '大提琴', '单簧管'],
     words: ['难过', '悲伤', '离开', '失去', '告别', '孤独', '遗憾', '哭泣', '眼泪', '错过', '分手', '想念', '没说出口', '没有说出口'],
   },
   hopeful: {
@@ -70,7 +70,7 @@ const MOODS: Record<MoodId, MoodDefinition> = {
     energy: 61,
     warmth: 72,
     genre: '治愈流行',
-    instruments: ['钢琴', '大提琴和声', '木琴'],
+    instruments: ['钢琴', '大提琴和声', '原声吉他'],
     words: ['希望', '未来', '终于', '明天', '重新', '勇气', '坚持', '相信', '梦想', '成长', '出发', '天亮', '终点', '微光'],
   },
   tense: {
@@ -85,7 +85,7 @@ const MOODS: Record<MoodId, MoodDefinition> = {
     energy: 91,
     warmth: 31,
     genre: '另类摇滚',
-    instruments: ['原声吉他', '实录低鼓', '大提琴低音'],
+    instruments: ['原声吉他', '实录框鼓', '大提琴低音'],
     words: ['愤怒', '争吵', '逃跑', '追赶', '害怕', '紧张', '恐惧', '战争', '撞击', '着火', '冲突', '呐喊'],
   },
   tender: {
@@ -115,7 +115,7 @@ const MOODS: Record<MoodId, MoodDefinition> = {
     energy: 20,
     warmth: 63,
     genre: '氛围民谣',
-    instruments: ['木琴泛音', '原声吉他', '大提琴'],
+    instruments: ['单簧管', '原声吉他', '大提琴'],
     words: ['安静', '平静', '宁静', '安心', '释然', '放下', '散步', '睡着', '慢慢', '静静'],
   },
 }
@@ -666,12 +666,12 @@ function deriveMoodProfile(mood: MoodDefinition, analysis: Omit<StoryEmotionAnal
   ))
   const instruments: string[] = []
   if (dimensions.grief > 0.34) instruments.push('柔音钢琴', '大提琴弓弦')
-  if (dimensions.nostalgia > 0.3) instruments.push('原声吉他', '磁带空气感')
-  if (dimensions.tension > 0.45) instruments.push('大提琴低音', '实录低鼓')
+  if (dimensions.nostalgia > 0.3) instruments.push('原声吉他', '柔音钢琴')
+  if (dimensions.tension > 0.45) instruments.push('大提琴低音', '实录框鼓')
   if (dimensions.tenderness > 0.34) instruments.push('原声吉他', '大提琴和声')
-  if (dimensions.openness > 0.34) instruments.push('吉他泛音', '开阔空气层')
+  if (dimensions.openness > 0.34) instruments.push('吉他泛音', '大提琴长音')
   if (dimensions.hope > 0.38 && (dimensions.grief <= 0.38 || dimensions.tension > 0.54)) instruments.push('钢琴', '轻打击乐')
-  if (dimensions.calm > 0.4 && dimensions.grief < 0.34) instruments.push('木琴泛音', '大提琴长音')
+  if (dimensions.calm > 0.4 && dimensions.grief < 0.34) instruments.push('单簧管', '大提琴长音')
   instruments.push(...mood.instruments)
   return { ...mood, tempo, key, scale, energy, warmth, instruments: [...new Set(instruments)].slice(0, 4) }
 }

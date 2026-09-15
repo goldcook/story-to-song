@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getArrangementTracks } from './audioEngine'
+import { fitMotifToChord, getArrangementTracks, getCompositionArc, getSongPreviewDuration } from './audioEngine'
 import { assessStorySafety, generateSong, getAlternateTitle } from './storyEngine'
 
 describe('story emotion and composition direction', () => {
@@ -135,7 +135,40 @@ describe('story emotion and composition direction', () => {
     expect(result.mood.scale).toBe('major')
     expect(result.mood.tempo).toBeGreaterThanOrEqual(108)
     expect(tracks).toContain('实录原声吉他')
-    expect(tracks).toContain('实录低鼓、木块与沙锤')
+    expect(tracks).toContain('实录框鼓、木块与沙锤')
+  })
+
+  it.each([54, 62, 88, 112, 128])('builds a 20–30 second musical arc at %s BPM', (tempo) => {
+    const arc = getCompositionArc(tempo, tempo >= 108)
+
+    expect(getSongPreviewDuration(tempo)).toBeGreaterThanOrEqual(20)
+    expect(getSongPreviewDuration(tempo)).toBeLessThanOrEqual(30)
+    expect(arc[0]).toBe('intro')
+    expect(arc.at(-1)).toBe('outro')
+    expect(arc.indexOf('turn')).toBeGreaterThan(arc.indexOf('intro'))
+    expect(arc.indexOf('turn')).toBeLessThan(arc.indexOf('climax'))
+  })
+
+  it('anchors strong melody beats to the active chord', () => {
+    const fitted = fitMotifToChord([
+      { at: 0, degree: 1, length: 0.5 },
+      { at: 0.8, degree: 1, length: 0.4 },
+      { at: 2.05, degree: 3, length: 0.6 },
+      { at: 3.2, degree: 6, length: 0.5 },
+    ], [0, 2, 4], 7)
+
+    expect([0, 2, 4]).toContain(((fitted[0].degree % 7) + 7) % 7)
+    expect([0, 2, 4]).toContain(((fitted[2].degree % 7) + 7) % 7)
+    expect([0, 2, 4]).toContain(((fitted[3].degree % 7) + 7) % 7)
+  })
+
+  it('uses an acoustic clarinet voice instead of bell-like tones for calm stories', () => {
+    const result = generateSong('夜里很安静，我坐在窗边慢慢看着月光，心里也渐渐平静下来。')
+    const tracks = getArrangementTracks(result).map((track) => track.label)
+
+    expect(result.mood.id).toBe('calm')
+    expect(tracks).toContain('实录单簧管')
+    expect(tracks.join('、')).not.toMatch(/木琴|钟声|电子|空气层/)
   })
 
   it('keeps alternate titles tied to the story instead of generic placeholders', () => {

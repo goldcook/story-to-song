@@ -17,7 +17,7 @@ type View = 'compose' | 'creating' | 'result'
 type ResultTab = 'sleeve' | 'sound' | 'notes'
 type PlaybackState = 'idle' | 'loading' | 'playing' | 'error'
 const RESULT_TABS: Array<[ResultTab, string]> = [['sleeve', '唱片内页'], ['sound', '声音设计'], ['notes', '制作手记']]
-const CREATION_STATUS = ['正在理解故事的情绪曲线', '正在写主题动机与回应旋律', '正在调入真实乐器与场景声', '正在完成混音与唱片母带', '私人唱片已经刻好']
+const CREATION_STATUS = ['正在理解故事的情绪曲线', '正在写主题动机与回应旋律', '正在安排真实乐器与声部', '正在完成混音与唱片母带', '私人唱片已经刻好']
 const DIMENSION_LABELS: Record<keyof StoryEmotionDimensions, string> = {
   joy: '喜悦',
   grief: '失落',
@@ -935,7 +935,7 @@ function App() {
             {[
               draftResult ? `读出 ${draftDimensions.map(([key]) => DIMENSION_LABELS[key]).join('、')}` : '理解这段故事的情绪曲线',
               draftResult ? `把 ${draftResult.keywords.slice(0, 2).join('与')}写进主题` : '写下可以被记住的主题旋律',
-              draftResult ? `安排 ${draftTracks.length} 层真实声音` : '调入真实乐器与场景声',
+              draftResult ? `安排 ${draftTracks.length} 层真实声音` : '安排真实乐器与声部层次',
               '混音、收束，并刻下这张唱片',
             ].map((label, index) => (
               <div className={creatingStep > index ? 'complete' : creatingStep === index ? 'active' : ''} key={label}>
