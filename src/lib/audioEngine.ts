@@ -16,12 +16,29 @@ const SCALE_STEPS = {
   pentatonic: [0, 2, 4, 7, 9],
 }
 
-const TARGET_PREVIEW_SECONDS = 18
+const TARGET_PREVIEW_SECONDS = 26
+const RELEASE_TAIL_SECONDS = 0.65
+const SAMPLE_FETCH_TIMEOUT_MS = 10_000
 
 interface MusicHandle {
   stop: () => void
   duration: number
 }
+
+type SampleInstrument = 'piano' | 'guitar' | 'cello' | 'xylophone' | 'kick' | 'shakerUp' | 'shakerDown' | 'woodblock'
+
+interface SampleDefinition {
+  instrument: SampleInstrument
+  path: string
+  rootMidi: number
+  level: number
+}
+
+interface DecodedSample extends SampleDefinition {
+  buffer: AudioBuffer
+}
+
+type SampleBank = Record<SampleInstrument, DecodedSample[]>
 
 interface AudioBuses {
   dry: AudioNode
@@ -61,6 +78,103 @@ const ARRANGEMENTS: Record<MoodId, Arrangement> = {
   calm: { lead: 'bell', pad: 'warm', percussion: 'none', ambience: 'rain' },
 }
 
+const SAMPLE_DEFINITIONS: SampleDefinition[] = [
+  { instrument: 'piano', path: 'piano/C3.mp3', rootMidi: 48, level: 0.82 },
+  { instrument: 'piano', path: 'piano/A3.mp3', rootMidi: 57, level: 0.9 },
+  { instrument: 'piano', path: 'piano/C4.mp3', rootMidi: 60, level: 0.86 },
+  { instrument: 'piano', path: 'piano/E4.mp3', rootMidi: 64, level: 0.95 },
+  { instrument: 'piano', path: 'piano/A4.mp3', rootMidi: 69, level: 0.92 },
+  { instrument: 'piano', path: 'piano/C5.mp3', rootMidi: 72, level: 0.9 },
+  { instrument: 'piano', path: 'piano/A5.mp3', rootMidi: 81, level: 0.86 },
+  { instrument: 'guitar', path: 'guitar-acoustic/C3.mp3', rootMidi: 48, level: 0.76 },
+  { instrument: 'guitar', path: 'guitar-acoustic/E3.mp3', rootMidi: 52, level: 0.82 },
+  { instrument: 'guitar', path: 'guitar-acoustic/G3.mp3', rootMidi: 55, level: 0.88 },
+  { instrument: 'guitar', path: 'guitar-acoustic/C4.mp3', rootMidi: 60, level: 0.9 },
+  { instrument: 'guitar', path: 'guitar-acoustic/E4.mp3', rootMidi: 64, level: 0.86 },
+  { instrument: 'guitar', path: 'guitar-acoustic/A4.mp3', rootMidi: 69, level: 0.82 },
+  { instrument: 'guitar', path: 'guitar-acoustic/C5.mp3', rootMidi: 72, level: 0.78 },
+  { instrument: 'guitar', path: 'guitar-acoustic/D5.mp3', rootMidi: 74, level: 0.76 },
+  { instrument: 'cello', path: 'cello/C2.mp3', rootMidi: 36, level: 0.9 },
+  { instrument: 'cello', path: 'cello/G2.mp3', rootMidi: 43, level: 0.92 },
+  { instrument: 'cello', path: 'cello/C3.mp3', rootMidi: 48, level: 0.88 },
+  { instrument: 'cello', path: 'cello/G3.mp3', rootMidi: 55, level: 0.86 },
+  { instrument: 'cello', path: 'cello/C4.mp3', rootMidi: 60, level: 0.82 },
+  { instrument: 'xylophone', path: 'xylophone/G4.mp3', rootMidi: 67, level: 0.72 },
+  { instrument: 'xylophone', path: 'xylophone/C5.mp3', rootMidi: 72, level: 0.76 },
+  { instrument: 'xylophone', path: 'xylophone/G5.mp3', rootMidi: 79, level: 0.7 },
+  { instrument: 'xylophone', path: 'xylophone/C6.mp3', rootMidi: 84, level: 0.66 },
+  { instrument: 'kick', path: '../percussion/kick.wav', rootMidi: 69, level: 0.72 },
+  { instrument: 'shakerUp', path: '../percussion/shaker-up.wav', rootMidi: 69, level: 0.7 },
+  { instrument: 'shakerDown', path: '../percussion/shaker-down.wav', rootMidi: 69, level: 0.7 },
+  { instrument: 'woodblock', path: '../percussion/woodblock.wav', rootMidi: 69, level: 0.72 },
+]
+
+const rawSampleCache = new Map<string, Promise<ArrayBuffer>>()
+let decodedSampleBank: Promise<SampleBank> | null = null
+
+function sampleAssetUrl(path: string) {
+  return new URL(`${import.meta.env.BASE_URL}audio/instruments/${path}`, document.baseURI).href
+}
+
+function fetchSample(path: string) {
+  const cached = rawSampleCache.get(path)
+  if (cached) return cached
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), SAMPLE_FETCH_TIMEOUT_MS)
+  const request = fetch(sampleAssetUrl(path), { signal: controller.signal })
+    .then((response) => {
+      if (!response.ok) throw new Error(`Unable to load audio sample: ${path}`)
+      return response.arrayBuffer()
+    })
+    .catch((error) => {
+      rawSampleCache.delete(path)
+      throw error
+    })
+    .finally(() => window.clearTimeout(timeout))
+  rawSampleCache.set(path, request)
+  return request
+}
+
+function decodeSample(context: BaseAudioContext, data: ArrayBuffer) {
+  return context.decodeAudioData(data.slice(0))
+}
+
+async function loadSampleBank() {
+  if (decodedSampleBank) return decodedSampleBank
+  const decoder = new OfflineAudioContext(1, 1, 44_100)
+  const preparation = Promise.all(SAMPLE_DEFINITIONS.map(async (definition) => {
+    try {
+      const data = await fetchSample(definition.path)
+      const buffer = await decodeSample(decoder, data)
+      return { ...definition, buffer }
+    } catch {
+      return null
+    }
+  })).then((samples) => {
+    const bank: SampleBank = {
+      piano: [],
+      guitar: [],
+      cello: [],
+      xylophone: [],
+      kick: [],
+      shakerUp: [],
+      shakerDown: [],
+      woodblock: [],
+    }
+    samples.forEach((sample) => {
+      if (sample) bank[sample.instrument].push(sample)
+    })
+    if (samples.some((sample) => !sample)) decodedSampleBank = null
+    return bank
+  })
+  decodedSampleBank = preparation
+  return preparation
+}
+
+export function preloadAudioSamples() {
+  return Promise.allSettled(SAMPLE_DEFINITIONS.map(({ path }) => fetchSample(path))).then(() => undefined)
+}
+
 function getStoryScene(story: string, fallback: Arrangement['ambience']): StoryScene {
   const home = /外婆|爷爷|奶奶|妈妈|爸爸|家人|回家|院子|故乡/.test(story)
   const rain = /下雨|雨里|雨夜|雨声|雨滴|暴雨/.test(story)
@@ -93,27 +207,29 @@ function getStoryScene(story: string, fallback: Arrangement['ambience']): StoryS
 export function getArrangementTracks(result: SongResult): ArrangementTrack[] {
   const arrangement = ARRANGEMENTS[result.mood.id]
   const scene = getStoryScene(result.story, arrangement.ambience)
-  const leadNames = { piano: '柔音钢琴', pluck: '原声拨弦', bell: '手碟钟音' }
-  const padNames = { warm: '暖色和弦铺底', bowed: '弓弦氛围层' }
+  const leadNames = { piano: '实录柔音钢琴', pluck: '实录原声吉他', bell: '实录木琴泛音' }
+  const padNames = { warm: '大提琴室内和声', bowed: '大提琴弓弦层' }
   const tracks: ArrangementTrack[] = [
     { id: 'lead', label: leadNames[arrangement.lead], role: '主题旋律' },
     { id: 'pad', label: padNames[arrangement.pad], role: '情绪和声' },
-    { id: 'bass', label: '圆润低音', role: '低频叙事线' },
+    { id: 'bass', label: '大提琴低音', role: '低频叙事线' },
+    { id: 'counterline', label: '钢琴与吉他回应', role: '后半段变奏' },
   ]
 
   if (arrangement.percussion !== 'none') {
     tracks.push({
       id: 'rhythm',
-      label: arrangement.percussion === 'full' ? '鼓组与沙锤' : '轻柔打击乐',
+      label: arrangement.percussion === 'full' ? '实录低鼓与沙锤' : '实录轻打击乐',
       role: '节奏脉冲',
     })
   }
-  if (scene.home) tracks.push({ id: 'memory', label: '木质拨弦', role: '家的记忆' })
-  if (scene.transit) tracks.push({ id: 'transit', label: '移动节拍', role: '旅途推进' })
-  if (scene.celestial) tracks.push({ id: 'stars', label: '星点钟琴', role: '夜空高光' })
+  if (scene.home) tracks.push({ id: 'memory', label: '原声吉他泛音', role: '家的记忆' })
+  if (scene.transit) tracks.push({ id: 'transit', label: '木质移动节拍', role: '旅途推进' })
+  if (scene.celestial) tracks.push({ id: 'stars', label: '木琴星点', role: '夜空高光' })
+  if (arrangement.percussion === 'none') tracks.push({ id: 'brush', label: '实录细沙锤', role: '克制律动' })
   tracks.push({
     id: 'ambience',
-    label: scene.rain ? '雨幕环境声' : scene.water ? '海风空气层' : scene.home ? '磁带空气感' : '空间环境层',
+    label: scene.rain ? '雨幕空气感' : scene.water ? '海风空气层' : scene.home ? '磁带空气感' : '空间空气层',
     role: scene.label,
   })
   return tracks
@@ -121,11 +237,11 @@ export function getArrangementTracks(result: SongResult): ArrangementTrack[] {
 
 function previewBars(tempo: number) {
   const barDuration = 240 / tempo
-  return Math.max(4, Math.round(TARGET_PREVIEW_SECONDS / barDuration))
+  return Math.max(6, Math.round(TARGET_PREVIEW_SECONDS / barDuration))
 }
 
 export function getSongPreviewDuration(tempo: number) {
-  return previewBars(tempo) * (240 / tempo)
+  return previewBars(tempo) * (240 / tempo) + RELEASE_TAIL_SECONDS
 }
 
 function rootFrequency(key: string) {
@@ -135,6 +251,20 @@ function rootFrequency(key: string) {
 
 function noteFrequency(root: number, semitone: number, octaveShift = 0) {
   return root * 2 ** ((semitone + octaveShift * 12) / 12)
+}
+
+function degreeSemitone(scale: number[], degree: number) {
+  const octave = Math.floor(degree / scale.length)
+  const index = ((degree % scale.length) + scale.length) % scale.length
+  return scale[index] + octave * 12
+}
+
+function seededUnit(seed: number, index: number) {
+  let value = (seed + index * 0x9e3779b9) >>> 0
+  value ^= value << 13
+  value ^= value >>> 17
+  value ^= value << 5
+  return (value >>> 0) / 0xffffffff
 }
 
 function connectToBuses(
@@ -158,35 +288,136 @@ function connectToBuses(
   wetGain.connect(buses.reverb)
 }
 
-function createNoiseBuffer(context: AudioContext, duration: number) {
+function frequencyToMidi(frequency: number) {
+  return 69 + 12 * Math.log2(frequency / 440)
+}
+
+function foldMidiIntoSampleRange(samples: DecodedSample[], targetMidi: number) {
+  const roots = samples.map(({ rootMidi }) => rootMidi)
+  const lowest = Math.min(...roots)
+  const highest = Math.max(...roots)
+  let foldedMidi = targetMidi
+  while (foldedMidi < lowest - 5) foldedMidi += 12
+  while (foldedMidi > highest + 5) foldedMidi -= 12
+  return foldedMidi
+}
+
+function nearestSample(samples: DecodedSample[], targetMidi: number) {
+  return samples.reduce<DecodedSample | null>((closest, sample) => {
+    if (!closest) return sample
+    return Math.abs(sample.rootMidi - targetMidi) < Math.abs(closest.rootMidi - targetMidi) ? sample : closest
+  }, null)
+}
+
+function scheduleSampledVoice(
+  context: AudioContext,
+  buses: AudioBuses,
+  sampleBank: SampleBank,
+  instrument: SampleInstrument,
+  frequency: number,
+  start: number,
+  duration: number,
+  volume: number,
+  pan: number,
+  options: { attack: number; release: number; dry: number; wet: number; lowpass?: number },
+) {
+  const samples = sampleBank[instrument]
+  if (!samples.length) return false
+  const targetMidi = foldMidiIntoSampleRange(samples, frequencyToMidi(frequency))
+  const sample = nearestSample(samples, targetMidi)
+  if (!sample) return false
+
+  const source = context.createBufferSource()
+  const voice = context.createGain()
+  const filter = context.createBiquadFilter()
+  const playbackRate = 2 ** ((targetMidi - sample.rootMidi) / 12)
+  const availableDuration = sample.buffer.duration / playbackRate
+  const naturalTail = instrument === 'cello' ? 0.55 : instrument === 'piano' ? 0.72 : 0.42
+  const stopAfter = Math.max(0.08, Math.min(duration + options.release + naturalTail, availableDuration - 0.015))
+  const releaseStart = Math.max(options.attack + 0.03, Math.min(duration, stopAfter - options.release))
+
+  source.buffer = sample.buffer
+  source.playbackRate.setValueAtTime(playbackRate, start)
+  voice.gain.setValueAtTime(0.0001, start)
+  voice.gain.linearRampToValueAtTime(volume * sample.level, start + options.attack)
+  voice.gain.setValueAtTime(volume * sample.level, start + releaseStart)
+  voice.gain.exponentialRampToValueAtTime(0.0001, start + stopAfter)
+  filter.type = 'lowpass'
+  filter.frequency.value = options.lowpass ?? 7600
+  source.connect(filter)
+  filter.connect(voice)
+  connectToBuses(context, voice, buses, options.dry, options.wet, pan)
+  source.start(start)
+  source.stop(start + stopAfter + 0.02)
+  return true
+}
+
+function scheduleSampledOneShot(
+  context: AudioContext,
+  buses: AudioBuses,
+  sampleBank: SampleBank | undefined,
+  instrument: 'kick' | 'shakerUp' | 'shakerDown' | 'woodblock',
+  start: number,
+  volume: number,
+  pan: number,
+  options: { dry: number; wet: number; maxDuration: number; playbackRate?: number; lowpass?: number },
+) {
+  const sample = sampleBank?.[instrument][0]
+  if (!sample) return false
+  const source = context.createBufferSource()
+  const voice = context.createGain()
+  const filter = context.createBiquadFilter()
+  const playbackRate = options.playbackRate ?? 1
+  const duration = Math.min(options.maxDuration, sample.buffer.duration / playbackRate)
+  source.buffer = sample.buffer
+  source.playbackRate.setValueAtTime(playbackRate, start)
+  voice.gain.setValueAtTime(0.0001, start)
+  voice.gain.linearRampToValueAtTime(volume * sample.level, start + 0.004)
+  voice.gain.setValueAtTime(volume * sample.level, start + Math.max(0.008, duration - 0.09))
+  voice.gain.exponentialRampToValueAtTime(0.0001, start + duration)
+  filter.type = 'lowpass'
+  filter.frequency.value = options.lowpass ?? 9000
+  source.connect(filter)
+  filter.connect(voice)
+  connectToBuses(context, voice, buses, options.dry, options.wet, pan)
+  source.start(start)
+  source.stop(start + duration + 0.02)
+  return true
+}
+
+function createNoiseBuffer(context: AudioContext, duration: number, seed: number) {
   const buffer = context.createBuffer(1, Math.ceil(context.sampleRate * duration), context.sampleRate)
   const data = buffer.getChannelData(0)
   let previous = 0
+  let state = seed || 1
   for (let index = 0; index < data.length; index += 1) {
-    const white = Math.random() * 2 - 1
+    state = (state * 1664525 + 1013904223) >>> 0
+    const white = state / 0xffffffff * 2 - 1
     previous = previous * 0.82 + white * 0.18
     data[index] = previous
   }
   return buffer
 }
 
-function createReverb(context: AudioContext, destination: AudioNode) {
+function createReverb(context: AudioContext, destination: AudioNode, seed: number) {
   const convolver = context.createConvolver()
-  const duration = 2.4
+  const duration = 1.45
   const impulse = context.createBuffer(2, context.sampleRate * duration, context.sampleRate)
+  let state = seed || 1
   for (let channel = 0; channel < impulse.numberOfChannels; channel += 1) {
     const data = impulse.getChannelData(channel)
     for (let index = 0; index < data.length; index += 1) {
-      const decay = (1 - index / data.length) ** 2.8
-      data[index] = (Math.random() * 2 - 1) * decay
+      const decay = (1 - index / data.length) ** 2.35
+      state = (state * 1664525 + 1013904223) >>> 0
+      data[index] = (state / 0xffffffff * 2 - 1) * decay
     }
   }
   convolver.buffer = impulse
   const returnGain = context.createGain()
   const returnFilter = context.createBiquadFilter()
   returnFilter.type = 'lowpass'
-  returnFilter.frequency.value = 5200
-  returnGain.gain.value = 0.24
+  returnFilter.frequency.value = 4800
+  returnGain.gain.value = 0.17
   convolver.connect(returnFilter)
   returnFilter.connect(returnGain)
   returnGain.connect(destination)
@@ -386,6 +617,135 @@ function scheduleBass(
   triangle.stop(start + duration + 0.03)
 }
 
+function scheduleAcousticPiano(
+  context: AudioContext,
+  buses: AudioBuses,
+  sampleBank: SampleBank | undefined,
+  frequency: number,
+  start: number,
+  duration: number,
+  volume: number,
+  pan = 0,
+) {
+  if (sampleBank && scheduleSampledVoice(
+    context,
+    buses,
+    sampleBank,
+    'piano',
+    frequency,
+    start,
+    duration,
+    volume * 1.18,
+    pan,
+    { attack: 0.012, release: 0.38, dry: 0.96, wet: 0.26, lowpass: 6800 },
+  )) return
+  schedulePiano(context, buses, frequency, start, duration, volume, pan)
+}
+
+function scheduleAcousticGuitar(
+  context: AudioContext,
+  buses: AudioBuses,
+  sampleBank: SampleBank | undefined,
+  noiseBuffer: AudioBuffer,
+  frequency: number,
+  start: number,
+  duration: number,
+  volume: number,
+  pan = 0,
+) {
+  if (sampleBank && scheduleSampledVoice(
+    context,
+    buses,
+    sampleBank,
+    'guitar',
+    frequency,
+    start,
+    duration,
+    volume * 1.34,
+    pan,
+    { attack: 0.006, release: 0.24, dry: 1, wet: 0.2, lowpass: 7200 },
+  )) return
+  schedulePluck(context, buses, noiseBuffer, frequency, start, duration, volume, pan)
+}
+
+function scheduleAcousticBell(
+  context: AudioContext,
+  buses: AudioBuses,
+  sampleBank: SampleBank | undefined,
+  frequency: number,
+  start: number,
+  duration: number,
+  volume: number,
+  pan = 0,
+) {
+  if (sampleBank && scheduleSampledVoice(
+    context,
+    buses,
+    sampleBank,
+    'xylophone',
+    frequency,
+    start,
+    duration,
+    volume * 1.16,
+    pan,
+    { attack: 0.008, release: 0.42, dry: 0.78, wet: 0.48, lowpass: 6200 },
+  )) return
+  scheduleBell(context, buses, frequency, start, duration, volume, pan)
+}
+
+function scheduleCelloLayer(
+  context: AudioContext,
+  buses: AudioBuses,
+  sampleBank: SampleBank | undefined,
+  frequency: number,
+  start: number,
+  duration: number,
+  volume: number,
+  pan: number,
+  fallbackBowed: boolean,
+) {
+  const sampledTone = fallbackBowed
+    ? { gain: 1.42, attack: 0.28, wet: 0.42, lowpass: 3600 }
+    : { gain: 1.32, attack: 0.16, wet: 0.31, lowpass: 4700 }
+  if (sampleBank && scheduleSampledVoice(
+    context,
+    buses,
+    sampleBank,
+    'cello',
+    frequency,
+    start,
+    duration,
+    volume * sampledTone.gain,
+    pan,
+    { attack: sampledTone.attack, release: 0.46, dry: 0.78, wet: sampledTone.wet, lowpass: sampledTone.lowpass },
+  )) return
+  schedulePad(context, buses, frequency, start, duration, volume, fallbackBowed, pan)
+}
+
+function scheduleAcousticBass(
+  context: AudioContext,
+  buses: AudioBuses,
+  sampleBank: SampleBank | undefined,
+  frequency: number,
+  start: number,
+  duration: number,
+  volume: number,
+) {
+  if (sampleBank && scheduleSampledVoice(
+    context,
+    buses,
+    sampleBank,
+    'cello',
+    frequency,
+    start,
+    duration,
+    volume * 0.82,
+    0,
+    { attack: 0.035, release: 0.28, dry: 0.94, wet: 0.11, lowpass: 820 },
+  )) return
+  scheduleBass(context, buses, frequency, start, duration, volume)
+}
+
 function scheduleKick(context: AudioContext, destination: AudioNode, start: number, volume: number) {
   const oscillator = context.createOscillator()
   const gain = context.createGain()
@@ -463,6 +823,96 @@ function scheduleWoodblock(context: AudioContext, destination: AudioNode, start:
   oscillator.stop(start + 0.12)
 }
 
+function scheduleRecordedKick(
+  context: AudioContext,
+  buses: AudioBuses,
+  sampleBank: SampleBank | undefined,
+  start: number,
+  volume: number,
+) {
+  if (scheduleSampledOneShot(
+    context,
+    buses,
+    sampleBank,
+    'kick',
+    start,
+    volume * 1.22,
+    0,
+    { dry: 1, wet: 0.06, maxDuration: 1.15, lowpass: 3100 },
+  )) return
+  scheduleKick(context, buses.dry, start, volume)
+}
+
+function scheduleRecordedShaker(
+  context: AudioContext,
+  buses: AudioBuses,
+  sampleBank: SampleBank | undefined,
+  noiseBuffer: AudioBuffer,
+  start: number,
+  volume: number,
+  upStroke: boolean,
+  pan: number,
+) {
+  if (scheduleSampledOneShot(
+    context,
+    buses,
+    sampleBank,
+    upStroke ? 'shakerUp' : 'shakerDown',
+    start,
+    volume * 1.55,
+    pan,
+    { dry: 0.88, wet: 0.18, maxDuration: upStroke ? 0.24 : 0.42, lowpass: 8200 },
+  )) return
+  scheduleShaker(context, buses.dry, noiseBuffer, start, volume)
+}
+
+function scheduleRecordedWoodblock(
+  context: AudioContext,
+  buses: AudioBuses,
+  sampleBank: SampleBank | undefined,
+  start: number,
+  volume: number,
+  pan = 0,
+) {
+  if (scheduleSampledOneShot(
+    context,
+    buses,
+    sampleBank,
+    'woodblock',
+    start,
+    volume * 1.28,
+    pan,
+    { dry: 0.9, wet: 0.16, maxDuration: 0.62, playbackRate: 0.96, lowpass: 6600 },
+  )) return
+  scheduleWoodblock(context, buses.dry, start, volume)
+}
+
+function scheduleSwell(
+  context: AudioContext,
+  buses: AudioBuses,
+  noiseBuffer: AudioBuffer,
+  start: number,
+  duration: number,
+  volume: number,
+) {
+  const noise = context.createBufferSource()
+  const filter = context.createBiquadFilter()
+  const gain = context.createGain()
+  noise.buffer = noiseBuffer
+  filter.type = 'bandpass'
+  filter.frequency.setValueAtTime(650, start)
+  filter.frequency.exponentialRampToValueAtTime(2800, start + duration)
+  filter.Q.value = 0.6
+  gain.gain.setValueAtTime(0.0001, start)
+  gain.gain.exponentialRampToValueAtTime(volume, start + duration * 0.76)
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration)
+  noise.connect(filter)
+  filter.connect(gain)
+  connectToBuses(context, gain, buses, 0.32, 0.74)
+  noise.start(start)
+  noise.stop(start + duration + 0.02)
+}
+
 function scheduleAmbience(
   context: AudioContext,
   buses: AudioBuses,
@@ -502,165 +952,315 @@ function scheduleComposition(
   result: SongResult,
   destination: AudioNode,
   startAt: number,
+  sampleBank?: SampleBank,
 ) {
+  const seed = storySeed(result.story)
   const master = context.createGain()
   const saturation = context.createWaveShaper()
   const compressor = context.createDynamicsCompressor()
+  const output = context.createGain()
   const curve = new Float32Array(256)
   for (let index = 0; index < curve.length; index += 1) {
     const value = index * 2 / (curve.length - 1) - 1
-    curve[index] = Math.tanh(value * 1.45)
+    curve[index] = Math.tanh(value * 1.18)
   }
   saturation.curve = curve
   saturation.oversample = '2x'
-  compressor.threshold.value = -18
-  compressor.knee.value = 16
-  compressor.ratio.value = 3
-  compressor.attack.value = 0.012
-  compressor.release.value = 0.25
+  compressor.threshold.value = -16
+  compressor.knee.value = 18
+  compressor.ratio.value = 2.2
+  compressor.attack.value = 0.025
+  compressor.release.value = 0.34
+  output.gain.value = 5.6
   master.connect(saturation)
   saturation.connect(compressor)
-  compressor.connect(destination)
+  compressor.connect(output)
+  output.connect(destination)
 
-  const reverb = createReverb(context, master)
+  const reverb = createReverb(context, master, seed ^ 0x51f15e)
   const buses: AudioBuses = { dry: master, reverb }
-  const noiseBuffer = createNoiseBuffer(context, 2)
+  const noiseBuffer = createNoiseBuffer(context, 3, seed ^ 0xa53a9d)
   const arrangement = ARRANGEMENTS[result.mood.id]
   const scene = getStoryScene(result.story, arrangement.ambience)
   const beat = 60 / result.mood.tempo
   const bar = beat * 4
   const bars = previewBars(result.mood.tempo)
-  const duration = bars * bar
+  const musicalDuration = bars * bar
+  const duration = musicalDuration + RELEASE_TAIL_SECONDS
   const root = rootFrequency(result.mood.key)
   const scale = SCALE_STEPS[result.mood.scale]
-  const progression = result.mood.scale === 'minor' ? [0, 5, 3, 6] : [0, 4, 5, 3]
-  const motifs = [[0, 2, 4, 2], [1, 2, 5, 4], [4, 3, 2, 1], [2, 4, 6, 4]]
-  const seed = storySeed(result.story)
+  const progressionBanks = result.mood.scale === 'minor'
+    ? [[0, 5, 3, 6, 0, 5, 4, 0], [0, 3, 5, 4, 0, 6, 3, 0], [0, 6, 5, 3, 0, 4, 5, 0]]
+    : [[0, 4, 5, 3, 0, 5, 3, 4], [0, 3, 4, 5, 0, 4, 3, 0], [0, 5, 3, 4, 0, 3, 5, 0]]
+  const progression = progressionBanks[seed % progressionBanks.length]
+  const motifTemplates = [
+    [{ at: 0, degree: 0, length: 0.68 }, { at: 0.9, degree: 2, length: 0.55 }, { at: 2.05, degree: 4, length: 0.78 }, { at: 3.2, degree: 2, length: 0.72 }],
+    [{ at: 0, degree: 1, length: 0.52 }, { at: 0.72, degree: 2, length: 0.7 }, { at: 1.9, degree: 5, length: 0.62 }, { at: 2.85, degree: 4, length: 1.02 }],
+    [{ at: 0, degree: 4, length: 0.72 }, { at: 1.05, degree: 3, length: 0.52 }, { at: 1.82, degree: 2, length: 0.66 }, { at: 3.05, degree: 1, length: 0.86 }],
+    [{ at: 0, degree: 2, length: 0.55 }, { at: 0.8, degree: 4, length: 0.82 }, { at: 2.1, degree: 6, length: 0.55 }, { at: 2.95, degree: 4, length: 0.95 }],
+  ]
+  const baseMotif = seed % motifTemplates.length
+  const coreMotif = motifTemplates[baseMotif]
+  const introBars = bars >= 10 ? 2 : 1
+  const liftStart = Math.max(introBars + 2, Math.floor(bars * 0.58))
+  const outroIndex = bars - 1
+  const introEnd = startAt + introBars * bar
+  const liftAt = startAt + liftStart * bar
+  const outroAt = startAt + outroIndex * bar
 
   master.gain.setValueAtTime(0.0001, startAt)
-  master.gain.linearRampToValueAtTime(0.72, startAt + 0.35)
-  master.gain.setValueAtTime(0.72, startAt + duration - 1)
-  master.gain.exponentialRampToValueAtTime(0.0001, startAt + duration + 0.1)
-  scheduleAmbience(context, buses, noiseBuffer, startAt, duration, scene.ambience)
+  master.gain.linearRampToValueAtTime(0.56, startAt + 0.55)
+  master.gain.setValueAtTime(0.58, introEnd)
+  master.gain.linearRampToValueAtTime(0.68, liftAt)
+  master.gain.linearRampToValueAtTime(0.77, liftAt + 0.42)
+  master.gain.setValueAtTime(0.77, Math.max(liftAt + 0.42, outroAt - 0.2))
+  master.gain.linearRampToValueAtTime(0.61, outroAt + 0.18)
+  master.gain.setValueAtTime(0.61, startAt + musicalDuration - 0.32)
+  master.gain.exponentialRampToValueAtTime(0.0001, startAt + duration)
+  scheduleAmbience(context, buses, noiseBuffer, startAt, musicalDuration, scene.ambience)
+  scheduleSwell(context, buses, noiseBuffer, liftAt - beat * 0.85, beat * 0.85, 0.012)
+
+  const scheduleLead = (frequency: number, noteStart: number, noteDuration: number, volume: number, pan: number) => {
+    if (arrangement.lead === 'bell') {
+      scheduleAcousticBell(context, buses, sampleBank, frequency, noteStart, noteDuration, volume * 0.7, pan)
+    } else if (arrangement.lead === 'pluck') {
+      scheduleAcousticGuitar(context, buses, sampleBank, noiseBuffer, frequency, noteStart, noteDuration, volume * 0.92, pan)
+    } else {
+      scheduleAcousticPiano(context, buses, sampleBank, frequency, noteStart, noteDuration, volume, pan)
+    }
+  }
 
   for (let barIndex = 0; barIndex < bars; barIndex += 1) {
     const barStart = startAt + barIndex * bar
-    const chordRoot = progression[barIndex % progression.length]
-    const chordDegrees = [chordRoot, chordRoot + 2, chordRoot + 4]
-    const dynamics = 0.78 + (barIndex / Math.max(1, bars - 1)) * 0.22
-    const isLastBar = barIndex === bars - 1
+    const isIntro = barIndex < introBars
+    const isLift = barIndex >= liftStart && barIndex < outroIndex
+    const isOutro = barIndex === outroIndex
+    const chordRoot = isOutro ? 0 : progression[barIndex % progression.length]
+    const chordDegrees = isIntro
+      ? [chordRoot, chordRoot + 4]
+      : isLift
+        ? [chordRoot, chordRoot + 2, chordRoot + 4, chordRoot + 6]
+        : isOutro
+          ? [0, 4]
+          : [chordRoot, chordRoot + 2, chordRoot + 4]
+    const dynamics = isIntro
+      ? 0.62 + barIndex * 0.08
+      : isLift
+        ? 1.04
+        : isOutro
+          ? 0.68
+          : 0.82 + (barIndex - introBars) / Math.max(1, liftStart - introBars) * 0.12
 
     chordDegrees.forEach((degree, noteIndex) => {
-      const semitone = scale[degree % scale.length] + (degree >= scale.length ? 12 : 0)
-      schedulePad(
+      const semitone = degreeSemitone(scale, degree)
+      scheduleCelloLayer(
         context,
         buses,
+        sampleBank,
         noteFrequency(root, semitone, -1),
-        barStart,
-        bar * (isLastBar ? 1.15 : 0.92),
-        0.026 * dynamics,
+        barStart + noteIndex * 0.014,
+        isOutro ? bar + RELEASE_TAIL_SECONDS * 0.7 : bar * 0.96,
+        (isLift ? 0.019 : 0.024) * dynamics,
+        (noteIndex - (chordDegrees.length - 1) / 2) * 0.16,
         arrangement.pad === 'bowed',
-        (noteIndex - 1) * 0.2,
       )
     })
 
-    const rootSemitone = scale[chordRoot % scale.length]
-    scheduleBass(context, buses, noteFrequency(root, rootSemitone, -2), barStart, beat * 1.55, 0.105 * dynamics)
-    if (!isLastBar) {
-      scheduleBass(context, buses, noteFrequency(root, rootSemitone, -2), barStart + beat * 2, beat * 1.45, 0.082 * dynamics)
-    }
-
-    const arpeggioPattern = [0, 1, 2, 1, 0, 1, 2, 1]
-    const arpeggioSteps = arrangement.percussion === 'none' ? 4 : 8
-    for (let step = 0; step < arpeggioSteps; step += 1) {
-      const chordDegree = chordDegrees[arpeggioPattern[step]]
-      const semitone = scale[chordDegree % scale.length] + (chordDegree >= scale.length ? 12 : 0)
-      const noteStart = barStart + step * (bar / arpeggioSteps)
-      if (arrangement.lead === 'piano') {
-        schedulePiano(context, buses, noteFrequency(root, semitone, -1), noteStart, beat * 0.8, 0.022 * dynamics, step % 2 ? 0.22 : -0.22)
-      } else {
-        schedulePluck(context, buses, noiseBuffer, noteFrequency(root, semitone, -1), noteStart, beat * 0.72, 0.034 * dynamics, step % 2 ? 0.25 : -0.25)
+    const rootSemitone = degreeSemitone(scale, chordRoot)
+    if (!isIntro) {
+      scheduleAcousticBass(
+        context,
+        buses,
+        sampleBank,
+        noteFrequency(root, rootSemitone, -2),
+        barStart,
+        isOutro ? beat * 3.5 : beat * 1.6,
+        (isOutro ? 0.075 : 0.1) * dynamics,
+      )
+      if (!isOutro) {
+        const secondBassDegree = isLift ? chordRoot + 4 : chordRoot
+        scheduleAcousticBass(
+          context,
+          buses,
+          sampleBank,
+          noteFrequency(root, degreeSemitone(scale, secondBassDegree), -2),
+          barStart + beat * 2,
+          beat * 1.45,
+          (isLift ? 0.085 : 0.072) * dynamics,
+        )
       }
     }
 
-    const motif = motifs[(barIndex + seed) % motifs.length]
-    motif.forEach((degree, beatIndex) => {
-      if (barIndex === 0 && beatIndex < 2) return
-      const melodyStart = barStart + beatIndex * beat
-      const melodyDuration = isLastBar && beatIndex === 0 ? beat * 3.3 : beat * (beatIndex === 3 ? 0.85 : 0.62)
-      const melodyDegree = isLastBar ? 0 : degree
-      const frequency = noteFrequency(root, scale[melodyDegree % scale.length], beatIndex % 3 === 1 ? 1 : 0)
-      const pan = beatIndex % 2 ? 0.09 : -0.09
-      if (arrangement.lead === 'bell') {
-        scheduleBell(context, buses, frequency, melodyStart, melodyDuration, 0.032 * dynamics, pan)
-      } else if (arrangement.lead === 'pluck') {
-        schedulePluck(context, buses, noiseBuffer, frequency, melodyStart, melodyDuration, 0.045 * dynamics, pan)
+    const arpeggioPattern = [0, 1, 2, 1, 0, 1, 2, 1]
+    const arpeggioSteps = isOutro ? 0 : isIntro ? 2 : isLift ? 8 : 4
+    for (let step = 0; step < arpeggioSteps; step += 1) {
+      const chordDegree = chordDegrees[arpeggioPattern[step] % chordDegrees.length]
+      const semitone = degreeSemitone(scale, chordDegree)
+      const gridStart = isIntro
+        ? barStart + beat * (2 + step)
+        : barStart + step * (bar / arpeggioSteps)
+      const playingOffset = (seededUnit(seed ^ 0x4a17, barIndex * 37 + step) - 0.5) * 0.026
+        + (arrangement.lead === 'pluck' && step % 2 === 1 ? 0.012 : 0)
+      const noteStart = Math.max(barStart, gridStart + playingOffset)
+      const humanVelocity = 0.92 + seededUnit(seed, barIndex * 31 + step) * 0.14
+      if (arrangement.lead === 'pluck') {
+        scheduleAcousticPiano(context, buses, sampleBank, noteFrequency(root, semitone, -1), noteStart, beat * 0.72, 0.016 * dynamics * humanVelocity, step % 2 ? 0.2 : -0.2)
       } else {
-        schedulePiano(context, buses, frequency, melodyStart, melodyDuration, 0.052 * dynamics, pan)
-        if ((barIndex + beatIndex) % 5 === 0) {
-          scheduleBell(context, buses, frequency * 2, melodyStart, melodyDuration, 0.009, pan * -1)
+        scheduleAcousticGuitar(context, buses, sampleBank, noiseBuffer, noteFrequency(root, semitone, -1), noteStart, beat * 0.62, 0.024 * dynamics * humanVelocity, step % 2 ? 0.23 : -0.23)
+      }
+    }
+
+    const isCadenceBar = barIndex === outroIndex - 1
+    const developmentBar = Math.max(0, barIndex - introBars)
+    const developedMotif = coreMotif.map((note, noteIndex) => ({
+      ...note,
+      degree: note.degree + (noteIndex === coreMotif.length - 1 ? (seed % 2 === 0 ? 1 : -1) : 0),
+      at: note.at + (noteIndex === 0 ? 0.28 : 0),
+    }))
+    const liftedMotif = coreMotif.map((note, noteIndex) => ({
+      ...note,
+      degree: note.degree + (noteIndex % 2 === 0 ? 2 : 1),
+      length: note.length * (noteIndex === coreMotif.length - 1 ? 1.28 : 0.92),
+    }))
+    const motif = isOutro
+      ? [{ at: 0.35, degree: 4, length: 0.7 }, { at: 1.45, degree: 2, length: 0.72 }, { at: 2.62, degree: 0, length: 1.7 }]
+      : isCadenceBar
+        ? [{ at: 0, degree: 4, length: 0.78 }, { at: 1.05, degree: 2, length: 0.62 }, { at: 2.05, degree: 1, length: 0.62 }, { at: 3.05, degree: 0, length: 1.2 }]
+        : isLift
+          ? liftedMotif
+          : developmentBar >= 2 && developmentBar % 4 >= 2
+            ? developedMotif
+            : coreMotif
+
+    motif.forEach((note, noteIndex) => {
+      if (isIntro && note.at < 2) return
+      const timing = isOutro ? 0 : (seededUnit(seed, barIndex * 43 + noteIndex) - 0.5) * 0.042
+      const noteStart = Math.max(barStart, barStart + note.at * beat + timing)
+      const velocity = 0.91 + seededUnit(seed ^ 0x71c3, barIndex * 47 + noteIndex) * 0.17
+      const octave = isLift && noteIndex === 2 && arrangement.lead !== 'pluck' ? 1 : 0
+      const frequency = noteFrequency(root, degreeSemitone(scale, note.degree), octave)
+      const pan = noteIndex % 2 ? 0.1 : -0.1
+      const leadVolume = (arrangement.lead === 'piano' ? 0.048 : arrangement.lead === 'pluck' ? 0.044 : 0.036)
+        * dynamics * velocity
+      scheduleLead(frequency, noteStart, beat * note.length, leadVolume, pan)
+
+      if (isLift && (noteIndex === 0 || noteIndex === 2)) {
+        const harmonyFrequency = noteFrequency(root, degreeSemitone(scale, note.degree - 2), octave)
+        if (arrangement.lead === 'pluck') {
+          scheduleAcousticPiano(context, buses, sampleBank, harmonyFrequency, noteStart + 0.018, beat * note.length * 0.92, 0.014 * dynamics, -pan * 1.7)
+        } else {
+          scheduleAcousticGuitar(context, buses, sampleBank, noiseBuffer, harmonyFrequency, noteStart + 0.018, beat * note.length * 0.88, 0.016 * dynamics, -pan * 1.7)
         }
       }
     })
 
-    if (arrangement.percussion !== 'none' && barIndex > 0 && !isLastBar) {
-      scheduleKick(context, master, barStart, arrangement.percussion === 'full' ? 0.13 : 0.085)
-      scheduleKick(context, master, barStart + beat * 2, arrangement.percussion === 'full' ? 0.105 : 0.065)
-      scheduleSnare(context, master, noiseBuffer, barStart + beat, arrangement.percussion === 'full' ? 0.055 : 0.032)
-      scheduleSnare(context, master, noiseBuffer, barStart + beat * 3, arrangement.percussion === 'full' ? 0.05 : 0.03)
-      if (arrangement.percussion === 'full') {
-        for (let step = 0; step < 8; step += 1) {
-          scheduleShaker(context, master, noiseBuffer, barStart + step * beat / 2, step % 2 ? 0.015 : 0.01)
-        }
+    if (isLift && !isOutro) {
+      const counterDegree = chordRoot + (barIndex % 2 === 0 ? 4 : 2)
+      const counterFrequency = noteFrequency(root, degreeSemitone(scale, counterDegree), -1)
+      const counterStart = barStart + beat * (barIndex % 2 === 0 ? 1.45 : 2.25)
+      if (arrangement.lead === 'piano') {
+        scheduleAcousticGuitar(context, buses, sampleBank, noiseBuffer, counterFrequency, counterStart, beat * 1.25, 0.019, 0.34)
+      } else {
+        scheduleAcousticPiano(context, buses, sampleBank, counterFrequency, counterStart, beat * 1.4, 0.017, 0.34)
       }
     }
 
-    if (scene.transit && barIndex > 0 && !isLastBar) {
-      scheduleWoodblock(context, master, barStart + beat * 0.5, 0.026)
-      scheduleWoodblock(context, master, barStart + beat * 2.5, 0.02)
+    if (arrangement.percussion !== 'none' && !isIntro && !isOutro) {
+      const full = arrangement.percussion === 'full'
+      scheduleRecordedKick(context, buses, sampleBank, barStart, full ? 0.115 : 0.07)
+      if (isLift || barIndex % 2 === 0) scheduleRecordedKick(context, buses, sampleBank, barStart + beat * 2, full ? 0.095 : 0.052)
+      if (full) {
+        scheduleSnare(context, master, noiseBuffer, barStart + beat, 0.018)
+        scheduleSnare(context, master, noiseBuffer, barStart + beat * 3, 0.016)
+        scheduleRecordedWoodblock(context, buses, sampleBank, barStart + beat, 0.022, -0.12)
+        scheduleRecordedWoodblock(context, buses, sampleBank, barStart + beat * 3, 0.019, 0.12)
+      } else {
+        scheduleRecordedShaker(context, buses, sampleBank, noiseBuffer, barStart + beat, 0.014, false, -0.18)
+        scheduleRecordedShaker(context, buses, sampleBank, noiseBuffer, barStart + beat * 3, 0.012, true, 0.18)
+      }
+      if (full && isLift) {
+        for (let step = 0; step < 8; step += 1) {
+          scheduleRecordedShaker(
+            context,
+            buses,
+            sampleBank,
+            noiseBuffer,
+            barStart + step * beat / 2,
+            step % 2 ? 0.01 : 0.007,
+            step % 2 === 1,
+            step % 2 ? 0.22 : -0.22,
+          )
+        }
+      }
+    } else if (arrangement.percussion === 'none' && isLift) {
+      scheduleRecordedShaker(context, buses, sampleBank, noiseBuffer, barStart + beat * 1.02, 0.012, false, -0.28)
+      scheduleRecordedShaker(context, buses, sampleBank, noiseBuffer, barStart + beat * 3.02, 0.01, true, 0.28)
     }
 
-    if (scene.celestial && barIndex % 2 === 1) {
-      const starDegree = scale[(barIndex + 4) % scale.length]
-      scheduleBell(context, buses, noteFrequency(root, starDegree, 1), barStart + beat * 3.25, beat * 0.45, 0.012, 0.35)
+    if (scene.transit && !isIntro && !isOutro && barIndex % 2 === 0) {
+      scheduleRecordedWoodblock(context, buses, sampleBank, barStart + beat * 0.5, 0.021, -0.2)
+      scheduleRecordedWoodblock(context, buses, sampleBank, barStart + beat * 2.5, 0.016, 0.2)
     }
 
-    if (scene.home && barIndex % 2 === 0) {
-      const memoryDegree = scale[(chordRoot + 4) % scale.length]
-      schedulePluck(context, buses, noiseBuffer, noteFrequency(root, memoryDegree), barStart + beat * 3.5, beat * 0.42, 0.02, -0.32)
+    if (scene.celestial && !isIntro && !isOutro && barIndex % 2 === 1) {
+      const starDegree = degreeSemitone(scale, barIndex + 4)
+      scheduleAcousticBell(context, buses, sampleBank, noteFrequency(root, starDegree, 1), barStart + beat * 3.25, beat * 0.45, 0.01, 0.35)
     }
 
-    if (scene.water && barIndex % 3 === 1) {
-      scheduleBell(context, buses, noteFrequency(root, scale[4 % scale.length], -1), barStart + beat * 1.5, beat * 1.2, 0.01, -0.4)
+    if (scene.home && !isOutro && barIndex % 2 === 0) {
+      const memoryDegree = degreeSemitone(scale, chordRoot + 4)
+      scheduleAcousticGuitar(context, buses, sampleBank, noiseBuffer, noteFrequency(root, memoryDegree), barStart + beat * 3.5, beat * 0.42, 0.017, -0.32)
+    }
+
+    if (scene.water && !isIntro && !isOutro && barIndex % 3 === 1) {
+      scheduleAcousticBell(context, buses, sampleBank, noteFrequency(root, degreeSemitone(scale, 4), -1), barStart + beat * 1.5, beat * 1.2, 0.009, -0.4)
     }
   }
 
   return { master, duration }
 }
 
-export function playSongPreview(result: SongResult, onEnded: () => void): MusicHandle {
+export async function playSongPreview(
+  result: SongResult,
+  onEnded: () => void,
+  signal?: AbortSignal,
+): Promise<MusicHandle> {
   const context = new AudioContext()
-  void context.resume()
-  const { master, duration } = scheduleComposition(
-    context,
-    result,
-    context.destination,
-    context.currentTime + 0.08,
-  )
-  const timeout = window.setTimeout(() => {
-    void context.close()
-    onEnded()
-  }, (duration + 0.25) * 1000)
+  const closeOnAbort = () => {
+    if (context.state !== 'closed') void context.close()
+  }
+  signal?.addEventListener('abort', closeOnAbort, { once: true })
+  try {
+    await context.resume()
+    const sampleBank = await loadSampleBank()
+    if (signal?.aborted) throw new DOMException('Audio preparation cancelled', 'AbortError')
+    signal?.removeEventListener('abort', closeOnAbort)
+    const { master, duration } = scheduleComposition(
+      context,
+      result,
+      context.destination,
+      context.currentTime + 0.08,
+      sampleBank,
+    )
+    const timeout = window.setTimeout(() => {
+      void context.close()
+      onEnded()
+    }, (duration + 0.25) * 1000)
 
-  return {
-    duration,
-    stop: () => {
-      window.clearTimeout(timeout)
-      master.gain.cancelScheduledValues(context.currentTime)
-      master.gain.setValueAtTime(Math.max(master.gain.value, 0.001), context.currentTime)
-      master.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.18)
-      window.setTimeout(() => void context.close(), 220)
-    },
+    return {
+      duration,
+      stop: () => {
+        window.clearTimeout(timeout)
+        master.gain.cancelScheduledValues(context.currentTime)
+        master.gain.setValueAtTime(Math.max(master.gain.value, 0.001), context.currentTime)
+        master.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.18)
+        window.setTimeout(() => void context.close(), 220)
+      },
+    }
+  } catch (error) {
+    signal?.removeEventListener('abort', closeOnAbort)
+    if (context.state !== 'closed') void context.close()
+    throw error
   }
 }
 
@@ -707,12 +1307,14 @@ function audioBufferToWav(buffer: AudioBuffer) {
 export async function renderSongPreviewWav(result: SongResult) {
   const duration = getSongPreviewDuration(result.mood.tempo)
   const sampleRate = 32_000
-  const context = new OfflineAudioContext(2, Math.ceil((duration + 0.35) * sampleRate), sampleRate)
+  const context = new OfflineAudioContext(2, Math.ceil((duration + 0.08) * sampleRate), sampleRate)
+  const sampleBank = await loadSampleBank()
   scheduleComposition(
     context as unknown as AudioContext,
     result,
     context.destination,
     0.05,
+    sampleBank,
   )
   const buffer = await context.startRendering()
   return audioBufferToWav(buffer)

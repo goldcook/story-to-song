@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
-import { getArrangementTracks, getSongPreviewDuration, playSongPreview } from './lib/audioEngine'
+import { getArrangementTracks, getSongPreviewDuration, playSongPreview, preloadAudioSamples } from './lib/audioEngine'
 import { generateSong, getAlternateTitle, samples } from './lib/storyEngine'
 import {
   createShareUrl,
@@ -15,7 +15,9 @@ import type { ReplyReference, SongResult } from './types'
 
 type View = 'compose' | 'creating' | 'result'
 type ResultTab = 'sleeve' | 'sound' | 'notes'
+type PlaybackState = 'idle' | 'loading' | 'playing' | 'error'
 const RESULT_TABS: Array<[ResultTab, string]> = [['sleeve', '唱片内页'], ['sound', '声音设计'], ['notes', '制作手记']]
+const CREATION_STATUS = ['正在理解故事的情绪曲线', '正在写主题动机与回应旋律', '正在调入真实乐器与场景声', '正在完成混音与唱片母带', '私人唱片已经刻好']
 
 interface SpeechRecognitionEventLike {
   resultIndex: number
@@ -211,8 +213,9 @@ function App() {
   const [tab, setTab] = useState<ResultTab>('sleeve')
   const [replyTo, setReplyTo] = useState<ReplyReference | null>(null)
   const [isListening, setIsListening] = useState(false)
-  const [isPlaying, setIsPlaying] = useState(false)
+  const [playbackState, setPlaybackState] = useState<PlaybackState>('idle')
   const [creatingStep, setCreatingStep] = useState(0)
+  const [creationProgress, setCreationProgress] = useState(0)
   const [playProgress, setPlayProgress] = useState(0)
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const [history, setHistory] = useState<SongResult[]>(loadHistory)
@@ -222,10 +225,14 @@ function App() {
   const [shareAssets, setShareAssets] = useState<AlbumAssets | null>(null)
   const [shareState, setShareState] = useState<'preparing' | 'ready' | 'partial' | 'sharing' | 'shared' | 'downloaded' | 'failed'>('preparing')
   const [storyExpanded, setStoryExpanded] = useState(false)
-  const audioRef = useRef<ReturnType<typeof playSongPreview> | null>(null)
+  const audioRef = useRef<Awaited<ReturnType<typeof playSongPreview>> | null>(null)
   const progressTimerRef = useRef<number | null>(null)
+  const playbackRequestRef = useRef(0)
+  const playbackAbortRef = useRef<AbortController | null>(null)
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const creationTimersRef = useRef<number[]>([])
+  const creationProgressTimerRef = useRef<number | null>(null)
+  const creationRequestRef = useRef(0)
   const sharePreparationRef = useRef(0)
   const dialogTriggerRef = useRef<HTMLElement | null>(null)
   const shareDialogRef = useRef<HTMLElement | null>(null)
@@ -235,15 +242,26 @@ function App() {
   const previewDuration = result ? getSongPreviewDuration(result.mood.tempo) : 0
   const arrangementTracks = result ? getArrangementTracks(result) : []
   const draftTracks = draftResult ? getArrangementTracks(draftResult) : []
+  const isPlaying = playbackState === 'playing'
+  const isAudioLoading = playbackState === 'loading'
 
   useEffect(() => {
     return () => {
+      creationRequestRef.current += 1
+      sharePreparationRef.current += 1
+      playbackRequestRef.current += 1
+      playbackAbortRef.current?.abort()
       audioRef.current?.stop()
       recognitionRef.current?.stop()
       if (progressTimerRef.current) window.clearInterval(progressTimerRef.current)
       creationTimersRef.current.forEach((timer) => window.clearTimeout(timer))
+      if (creationProgressTimerRef.current) window.clearInterval(creationProgressTimerRef.current)
     }
   }, [])
+
+  useEffect(() => {
+    if (result) void preloadAudioSamples()
+  }, [result])
 
   useEffect(() => {
     document.title = result ? `《${result.title}》 · 叙音私人唱片` : '叙音 · 把一段生活做成私人唱片'
@@ -254,9 +272,12 @@ function App() {
       const sharedResult = readSharedResult()
       audioRef.current?.stop()
       audioRef.current = null
+      playbackRequestRef.current += 1
+      playbackAbortRef.current?.abort()
+      playbackAbortRef.current = null
       if (progressTimerRef.current) window.clearInterval(progressTimerRef.current)
       progressTimerRef.current = null
-      setIsPlaying(false)
+      setPlaybackState('idle')
       setPlayProgress(0)
       setShareOpen(false)
       setHistoryOpen(false)
@@ -325,27 +346,35 @@ function App() {
   }, [historyOpen, shareOpen])
 
   const clearCreationTimers = () => {
+    creationRequestRef.current += 1
     creationTimersRef.current.forEach((timer) => window.clearTimeout(timer))
     creationTimersRef.current = []
+    if (creationProgressTimerRef.current) window.clearInterval(creationProgressTimerRef.current)
+    creationProgressTimerRef.current = null
   }
 
   const createSong = () => {
     if (story.trim().length < MIN_STORY_LENGTH) return
     recognitionRef.current?.stop()
     clearCreationTimers()
+    const requestId = ++creationRequestRef.current
+    const shareRequestId = ++sharePreparationRef.current
     setView('creating')
     setCreatingStep(0)
+    setCreationProgress(3)
+    setShareAssets(null)
+    setShareState('preparing')
     const next = generateSong(story, { replyTo: replyTo ?? undefined })
     setDraftResult(next)
-    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    const timings = reducedMotion ? [40, 80, 120, 180] : [420, 820, 1220, 1500]
-    creationTimersRef.current = [
-      window.setTimeout(() => setCreatingStep(1), timings[0]),
-      window.setTimeout(() => setCreatingStep(2), timings[1]),
-      window.setTimeout(() => setCreatingStep(3), timings[2]),
-      window.setTimeout(() => {
-      setShareAssets(null)
-      setShareState('preparing')
+    const minimumDuration = Math.min(13_000, 8_500 + story.trim().length * 8)
+    const hardLimit = 18_000
+    const revealDelay = 380
+    let minimumElapsed = false
+    let assetsSettled = false
+    let finished = false
+
+    const revealResult = () => {
+      if (requestId !== creationRequestRef.current) return
       setSharedView(false)
       setResult(next)
       setDraftResult(null)
@@ -358,7 +387,63 @@ function App() {
         return updated
       })
       creationTimersRef.current = []
-    }, timings[3]),
+    }
+
+    const finishCreation = () => {
+      if (finished || requestId !== creationRequestRef.current) return
+      finished = true
+      creationTimersRef.current.forEach((timer) => window.clearTimeout(timer))
+      creationTimersRef.current = []
+      if (creationProgressTimerRef.current) window.clearInterval(creationProgressTimerRef.current)
+      creationProgressTimerRef.current = null
+      setCreatingStep(4)
+      setCreationProgress(100)
+      creationTimersRef.current.push(window.setTimeout(revealResult, revealDelay))
+    }
+
+    const finishWhenReady = () => {
+      if (minimumElapsed && assetsSettled) finishCreation()
+    }
+
+    void prepareAlbumAssets(next)
+      .then((assets) => {
+        if (shareRequestId !== sharePreparationRef.current) return
+        setShareAssets(assets)
+        setShareState(assets.cover && assets.poster && assets.audio ? 'ready' : 'partial')
+      })
+      .catch(() => {
+        if (shareRequestId === sharePreparationRef.current) setShareState('failed')
+      })
+      .finally(() => {
+        assetsSettled = true
+        finishWhenReady()
+      })
+
+    const progressTicks = Math.max(1, Math.ceil((minimumDuration - revealDelay) / 120))
+    const progressIncrement = 92 / progressTicks
+    creationProgressTimerRef.current = window.setInterval(() => {
+      setCreationProgress((current) => Math.min(95, current + progressIncrement))
+    }, 120)
+
+    creationTimersRef.current = [
+      window.setTimeout(() => {
+        setCreatingStep(1)
+        setCreationProgress((current) => Math.max(current, 24))
+      }, minimumDuration * 0.22),
+      window.setTimeout(() => {
+        setCreatingStep(2)
+        setCreationProgress((current) => Math.max(current, 49))
+      }, minimumDuration * 0.46),
+      window.setTimeout(() => {
+        setCreatingStep(3)
+        setCreationProgress((current) => Math.max(current, 74))
+      }, minimumDuration * 0.7),
+      window.setTimeout(() => {
+        minimumElapsed = true
+        setCreationProgress((current) => Math.max(current, 96))
+        finishWhenReady()
+      }, minimumDuration - revealDelay),
+      window.setTimeout(finishCreation, hardLimit - revealDelay),
     ]
   }
 
@@ -393,33 +478,56 @@ function App() {
   }
 
   const stopPlayback = () => {
+    playbackRequestRef.current += 1
+    playbackAbortRef.current?.abort()
+    playbackAbortRef.current = null
     audioRef.current?.stop()
     audioRef.current = null
-    setIsPlaying(false)
+    setPlaybackState('idle')
     setPlayProgress(0)
     if (progressTimerRef.current) window.clearInterval(progressTimerRef.current)
     progressTimerRef.current = null
   }
 
-  const togglePlay = () => {
+  const togglePlay = async () => {
     if (!result) return
-    if (isPlaying) {
+    if (isPlaying || isAudioLoading) {
       stopPlayback()
       return
     }
-    audioRef.current = playSongPreview(result, () => {
-      setIsPlaying(false)
-      setPlayProgress(0)
-      audioRef.current = null
-      if (progressTimerRef.current) window.clearInterval(progressTimerRef.current)
-    })
-    setIsPlaying(true)
-    const duration = audioRef.current.duration * 1000
-    let elapsed = 0
-    progressTimerRef.current = window.setInterval(() => {
-      elapsed += 180
-      setPlayProgress(Math.min(100, (elapsed / duration) * 100))
-    }, 180)
+    const requestId = ++playbackRequestRef.current
+    const controller = new AbortController()
+    playbackAbortRef.current = controller
+    setPlaybackState('loading')
+    setPlayProgress(0)
+    try {
+      const handle = await playSongPreview(result, () => {
+        if (requestId !== playbackRequestRef.current) return
+        setPlaybackState('idle')
+        setPlayProgress(0)
+        audioRef.current = null
+        playbackAbortRef.current = null
+        if (progressTimerRef.current) window.clearInterval(progressTimerRef.current)
+        progressTimerRef.current = null
+      }, controller.signal)
+      if (requestId !== playbackRequestRef.current) {
+        handle.stop()
+        return
+      }
+      audioRef.current = handle
+      playbackAbortRef.current = null
+      setPlaybackState('playing')
+      const duration = handle.duration * 1000
+      let elapsed = 0
+      progressTimerRef.current = window.setInterval(() => {
+        elapsed += 180
+        setPlayProgress(Math.min(100, (elapsed / duration) * 100))
+      }, 180)
+    } catch (error) {
+      if (requestId !== playbackRequestRef.current) return
+      playbackAbortRef.current = null
+      setPlaybackState(error instanceof DOMException && error.name === 'AbortError' ? 'idle' : 'error')
+    }
   }
 
   const copyPrompt = async () => {
@@ -661,7 +769,7 @@ function App() {
               : '写到谁、哪个瞬间，以及一个你最记得的细节。'}
           </p>
           <button className="create-button" disabled={story.trim().length < MIN_STORY_LENGTH} onClick={createSong}>
-            <Icon name="spark" /><span>制作我的私人唱片</span><small>约 19 秒</small>
+            <Icon name="spark" /><span>制作我的私人唱片</span><small>约 26 秒</small>
           </button>
           <div className="sample-block">
             <span>可以从一个自然的时刻开始</span>
@@ -677,7 +785,7 @@ function App() {
       )}
 
       {view === 'creating' && (
-        <section className="creating-view page-enter" role="status" aria-live="polite" aria-atomic="true">
+        <section className="creating-view page-enter">
           <div className="sound-orbit">
             <span className="orbit orbit-one" /><span className="orbit orbit-two" /><span className="orbit orbit-three" />
             <div className="orbit-center"><Icon name="spark" size={28} /></div>
@@ -693,11 +801,28 @@ function App() {
               <div>{draftResult.keywords.slice(0, 3).map((keyword) => <strong key={keyword}>{keyword}</strong>)}</div>
             </div>
           )}
+          <div
+            className="creation-progress"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(creationProgress)}
+            aria-label="私人唱片制作进度"
+          >
+            <div className="creation-progress-meta">
+              <span role="status" aria-live="polite" aria-atomic="true">
+                {CREATION_STATUS[Math.min(creatingStep, CREATION_STATUS.length - 1)]}
+              </span>
+              <strong>{Math.round(creationProgress)}%</strong>
+            </div>
+            <div className="creation-progress-rail"><i style={{ width: `${creationProgress}%` }} /></div>
+          </div>
           <div className="creating-steps">
             {[
-              draftResult ? `选择 ${draftResult.mood.label}作为声音主色` : '选择这段故事的声音主色',
-              draftResult ? `保留 ${draftResult.keywords.slice(0, 2).join('与')}` : '保留故事里的具体画面',
-              draftResult ? `安排 ${draftTracks.length} 层声音` : '为它安排专属原声',
+              draftResult ? `读出 ${draftResult.mood.label}与${draftResult.secondaryMood}` : '理解这段故事的情绪曲线',
+              draftResult ? `把 ${draftResult.keywords.slice(0, 2).join('与')}写进主题` : '写下可以被记住的主题旋律',
+              draftResult ? `安排 ${draftTracks.length} 层真实声音` : '调入真实乐器与场景声',
+              '混音、收束，并刻下这张唱片',
             ].map((label, index) => (
               <div className={creatingStep > index ? 'complete' : creatingStep === index ? 'active' : ''} key={label}>
                 <span>{creatingStep > index ? <Icon name="check" size={14} /> : `0${index + 1}`}</span>
@@ -738,15 +863,31 @@ function App() {
             </div>
           )}
 
-          <div className="player-card">
-            <button className="play-button" onClick={togglePlay} aria-label={isPlaying ? '暂停' : '播放'}>
-              <Icon name={isPlaying ? 'pause' : 'play'} size={24} />
+          <div className="player-card" aria-busy={isAudioLoading}>
+            <button
+              className={`play-button ${isAudioLoading ? 'loading' : ''}`}
+              onClick={togglePlay}
+              aria-label={isAudioLoading ? '取消准备音频' : isPlaying ? '暂停' : playbackState === 'error' ? '重试播放' : '播放'}
+            >
+              <Icon name={isPlaying ? 'pause' : isAudioLoading ? 'spark' : 'play'} size={24} />
             </button>
             <div className="player-main">
-              <div className="player-meta">
-                <span>{isPlaying ? '这段故事正在播放' : '播放这段故事的私人原声'}</span>
+              <div className="player-meta" aria-live="polite">
+                <span>
+                  {isAudioLoading
+                    ? '正在准备真实乐器…'
+                    : playbackState === 'error'
+                      ? '声音加载失败，点此重试'
+                      : isPlaying
+                        ? '这段故事正在播放'
+                        : `播放这段故事的 ${Math.round(previewDuration)} 秒私人原声`}
+                </span>
                 <small>
-                  {isPlaying
+                  {isAudioLoading
+                    ? '首次播放需要片刻'
+                    : playbackState === 'error'
+                      ? '请检查网络后重试'
+                      : isPlaying
                     ? `${formatDuration(previewDuration * playProgress / 100)} / ${formatDuration(previewDuration)}`
                     : `约 ${Math.round(previewDuration)} 秒`}
                 </small>
@@ -928,6 +1069,10 @@ function App() {
         </section>
       )}
 
+      <a className="credits-link" href={`${import.meta.env.BASE_URL}audio/ATTRIBUTION.txt`} target="_blank" rel="noreferrer">
+        声音素材许可
+      </a>
+
       {shareOpen && result && (
         <div className="sheet-backdrop share-backdrop" onClick={() => setShareOpen(false)}>
           <aside ref={shareDialogRef} className="share-studio" role="dialog" aria-modal="true" aria-label="发行私人唱片" onClick={(event) => event.stopPropagation()}>
@@ -983,7 +1128,7 @@ function App() {
                 <span>
                   <strong>
                     {shareState === 'preparing'
-                      ? '正在生成音乐文件…'
+                      ? `正在准备海报与 ${Math.round(previewDuration)} 秒音乐…`
                       : shareState === 'sharing'
                         ? '正在打开分享…'
                         : shareState === 'shared'
@@ -996,7 +1141,13 @@ function App() {
                               ? '重新生成分享文件'
                               : '分享封面、海报与音乐'}
                   </strong>
-                  <small>{shareState === 'partial' ? '成功的文件仍可在上方单独保存' : '包含 PNG 封面和 WAV 纯音乐'}</small>
+                  <small>
+                    {shareState === 'preparing'
+                      ? '首次导出真实乐器音轨可能需要几秒'
+                      : shareState === 'partial'
+                        ? '成功的文件仍可在上方单独保存'
+                        : '包含 PNG 封面和 WAV 纯音乐'}
+                  </small>
                 </span>
                 <Icon name="arrow" size={16} />
               </button>

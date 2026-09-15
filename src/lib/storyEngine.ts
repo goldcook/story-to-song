@@ -30,7 +30,7 @@ const MOODS: Record<MoodId, ScorableMood> = {
     energy: 82,
     warmth: 76,
     genre: '轻快流行',
-    instruments: ['原声吉他', '手鼓', '口哨'],
+    instruments: ['原声吉他', '大提琴', '低鼓与沙锤'],
     words: ['开心', '快乐', '笑', '阳光', '旅行', '自由', '喜欢', '惊喜', '庆祝', '夏天', '朋友', '奔跑'],
   },
   melancholy: {
@@ -45,7 +45,7 @@ const MOODS: Record<MoodId, ScorableMood> = {
     energy: 28,
     warmth: 38,
     genre: '卧室流行',
-    instruments: ['柔音钢琴', '大提琴', '环境雨声'],
+    instruments: ['柔音钢琴', '大提琴', '雨幕空气感'],
     words: ['难过', '悲伤', '离开', '失去', '再见', '孤独', '遗憾', '哭泣', '眼泪', '错过', '分手', '想念', '站台', '没说出口', '没有说出口'],
   },
   hopeful: {
@@ -60,7 +60,7 @@ const MOODS: Record<MoodId, ScorableMood> = {
     energy: 61,
     warmth: 72,
     genre: '治愈流行',
-    instruments: ['钢琴', '弦乐四重奏', '钟琴'],
+    instruments: ['钢琴', '大提琴和声', '木琴'],
     words: ['希望', '未来', '终于', '明天', '重新', '勇气', '坚持', '相信', '梦想', '成长', '出发', '天亮', '终点', '微光'],
   },
   tense: {
@@ -75,7 +75,7 @@ const MOODS: Record<MoodId, ScorableMood> = {
     energy: 91,
     warmth: 31,
     genre: '另类摇滚',
-    instruments: ['失真吉他', '强力鼓组', '合成器低音'],
+    instruments: ['原声吉他', '实录低鼓', '大提琴低音'],
     words: ['愤怒', '争吵', '逃跑', '追赶', '害怕', '紧张', '疯狂', '战争', '撞击', '着火', '火焰', '冲动', '呐喊'],
   },
   tender: {
@@ -90,7 +90,7 @@ const MOODS: Record<MoodId, ScorableMood> = {
     energy: 36,
     warmth: 94,
     genre: '温柔唱作',
-    instruments: ['尼龙弦吉他', '柔和钢琴', '弦乐'],
+    instruments: ['原声吉他', '柔和钢琴', '大提琴'],
     words: ['爱', '拥抱', '陪伴', '妈妈', '爸爸', '孩子', '温暖', '牵手', '礼物', '照顾', '晚安', '心动'],
   },
   calm: {
@@ -105,7 +105,7 @@ const MOODS: Record<MoodId, ScorableMood> = {
     energy: 20,
     warmth: 63,
     genre: '氛围民谣',
-    instruments: ['电钢琴', '手碟', '自然环境声'],
+    instruments: ['木琴泛音', '原声吉他', '大提琴'],
     words: ['安静', '平静', '风', '海', '山', '夜晚', '星星', '散步', '月亮', '睡着', '湖', '下雨'],
   },
 }
