@@ -1,23 +1,25 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { getArrangementTracks, getSongPreviewDuration, playSongPreview } from './lib/audioEngine'
-import { generateSong, samples } from './lib/storyEngine'
+import { generateSong, getAlternateTitle, samples } from './lib/storyEngine'
 import {
   createShareUrl,
   getAlbumVisual,
   downloadStoryPoster,
   prepareAlbumAssets,
-  readSharedStory,
+  readSharedResult,
   shareAlbum,
   shareAlbumLink,
   type AlbumAssets,
 } from './lib/shareAlbum'
-import type { SongResult } from './types'
+import type { ReplyReference, SongResult } from './types'
 
 type View = 'compose' | 'creating' | 'result'
 type ResultTab = 'sleeve' | 'sound' | 'notes'
+const RESULT_TABS: Array<[ResultTab, string]> = [['sleeve', '唱片内页'], ['sound', '声音设计'], ['notes', '制作手记']]
 
 interface SpeechRecognitionEventLike {
-  results: ArrayLike<{ 0: { transcript: string } }>
+  resultIndex: number
+  results: ArrayLike<{ 0: { transcript: string }; isFinal?: boolean }>
 }
 
 interface SpeechRecognitionLike {
@@ -39,16 +41,55 @@ declare global {
 }
 
 const HISTORY_KEY = 'story-to-song-history'
-const SHARED_STORY = readSharedStory()
-const INITIAL_SHARED_RESULT = SHARED_STORY ? generateSong(SHARED_STORY) : null
+const MAX_STORY_LENGTH = 1000
+const MIN_STORY_LENGTH = 12
+const MOOD_IDS = ['nostalgic', 'joyful', 'melancholy', 'hopeful', 'tense', 'tender', 'calm'] as const
+const INITIAL_SHARED_RESULT = readSharedResult()
+
+function restoreHistoryItem(value: unknown): SongResult | null {
+  if (!value || typeof value !== 'object') return null
+  const item = value as Partial<SongResult>
+  if (typeof item.id !== 'string'
+    || typeof item.createdAt !== 'number'
+    || !Number.isFinite(item.createdAt)
+    || typeof item.story !== 'string'
+    || !item.story.trim()
+    || typeof item.title !== 'string') return null
+  const moodId = item.mood && MOOD_IDS.includes(item.mood.id as typeof MOOD_IDS[number])
+    ? item.mood.id
+    : undefined
+  const rebuilt = generateSong(item.story.slice(0, MAX_STORY_LENGTH), {
+    id: item.id.slice(0, 96),
+    createdAt: item.createdAt,
+    title: item.title.slice(0, 32),
+    moodId,
+    replyTo: typeof item.replyTo?.title === 'string' ? { title: item.replyTo.title.slice(0, 32) } : undefined,
+  })
+  return rebuilt
+}
 
 function loadHistory() {
   try {
-    return (JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') as SongResult[]).slice(0, 8)
+    const stored = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') as unknown
+    return Array.isArray(stored)
+      ? stored.map(restoreHistoryItem).filter((item): item is SongResult => Boolean(item)).slice(0, 12)
+      : []
   } catch {
-    localStorage.removeItem(HISTORY_KEY)
+    try { localStorage.removeItem(HISTORY_KEY) } catch { /* Storage can be unavailable in private mode. */ }
     return []
   }
+}
+
+function saveHistory(items: SongResult[]) {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(items))
+  } catch {
+    // The current record remains usable even when local persistence is unavailable.
+  }
+}
+
+function appendStory(current: string, addition: string) {
+  return `${current}${current && addition ? ' ' : ''}${addition}`.slice(0, MAX_STORY_LENGTH)
 }
 
 function formatDuration(seconds: number) {
@@ -90,7 +131,31 @@ function Logo() {
   )
 }
 
-function AlbumArtwork({ result, compact = false }: { result: SongResult; compact?: boolean }) {
+function AlbumMotif({ motif }: { motif: ReturnType<typeof getAlbumVisual>['motif'] }) {
+  if (motif === 'rain') {
+    return <svg className="album-motif" viewBox="0 0 100 100" aria-hidden="true"><path d="M19 3 4 36M41 0 20 46M64 6 42 54M86 2 60 59M101 21 76 69M8 78h83" /></svg>
+  }
+  if (motif === 'horizon') {
+    return <svg className="album-motif" viewBox="0 0 100 100" aria-hidden="true"><circle cx="67" cy="29" r="12" /><path d="M-3 57C18 40 37 72 59 55s38 4 48-5M-3 70c23-13 43 14 66-1s36 4 45 1M-3 83c22-9 42 10 64-1s36 1 46 0" /></svg>
+  }
+  if (motif === 'constellation') {
+    return <svg className="album-motif" viewBox="0 0 100 100" aria-hidden="true"><path d="m9 62 23-39 19 31 22-42 19 41-29 29Z" /><circle cx="9" cy="62" r="2" /><circle cx="32" cy="23" r="3" /><circle cx="51" cy="54" r="2" /><circle cx="73" cy="12" r="4" /><circle cx="92" cy="53" r="2" /><circle cx="63" cy="82" r="3" /></svg>
+  }
+  if (motif === 'window') {
+    return <svg className="album-motif" viewBox="0 0 100 100" aria-hidden="true"><rect x="13" y="8" width="74" height="76" /><path d="M50 8v76M13 47h74" /><rect className="fill" x="17" y="12" width="29" height="31" /></svg>
+  }
+  if (motif === 'memory') {
+    return <svg className="album-motif" viewBox="0 0 100 100" aria-hidden="true"><circle className="wash" cx="50" cy="47" r="39" /><circle cx="42" cy="42" r="21" /><circle className="cutout" cx="65" cy="60" r="13" /></svg>
+  }
+  return (
+    <div className="album-orbits">
+      {[1, 2, 3, 4, 5].map((ring) => <i key={ring} />)}
+      <span />
+    </div>
+  )
+}
+
+function AlbumArtwork({ result, compact = false, mini = false }: { result: SongResult; compact?: boolean; mini?: boolean }) {
   const visual = getAlbumVisual(result)
   const style = {
     '--album-color': result.mood.color,
@@ -102,15 +167,36 @@ function AlbumArtwork({ result, compact = false }: { result: SongResult; compact
   } as CSSProperties
 
   return (
-    <div className={`album-artwork ${compact ? 'compact' : ''}`} style={style}>
+    <div className={`album-artwork motif-${visual.motif} ${compact ? 'compact' : ''} ${mini ? 'mini' : ''}`} style={style}>
       <div className="album-mark">叙音 <i /> 01</div>
-      <div className="album-orbits">
-        {[1, 2, 3, 4, 5].map((ring) => <i key={ring} />)}
-        <span />
-      </div>
+      <AlbumMotif motif={visual.motif} />
       <div className="album-caption">
         <strong>《{result.title}》</strong>
-        <span>{result.mood.label} · {result.mood.tempo} BPM</span>
+        <span>{result.mood.label} · {result.theme}</span>
+      </div>
+    </div>
+  )
+}
+
+function ActualPosterPreview({ result, poster }: { result: SongResult; poster: Blob }) {
+  const [posterUrl] = useState(() => URL.createObjectURL(poster))
+  useEffect(() => {
+    return () => URL.revokeObjectURL(posterUrl)
+  }, [posterUrl])
+
+  return <div className="poster-preview actual-poster"><img src={posterUrl} alt={`《${result.title}》故事海报预览`} /></div>
+}
+
+function PosterPreview({ result, poster }: { result: SongResult; poster?: Blob }) {
+  if (poster) return <ActualPosterPreview result={result} poster={poster} />
+
+  return (
+    <div className="poster-preview">
+      <AlbumArtwork result={result} />
+      <div className="poster-preview-footer">
+        <i />
+        <span>“{result.excerpt}”</span>
+        <small>{new Date(result.createdAt).getFullYear()} · XIYIN</small>
       </div>
     </div>
   )
@@ -123,7 +209,7 @@ function App() {
   const [draftResult, setDraftResult] = useState<SongResult | null>(null)
   const [sharedView, setSharedView] = useState(Boolean(INITIAL_SHARED_RESULT))
   const [tab, setTab] = useState<ResultTab>('sleeve')
-  const [replyTo, setReplyTo] = useState<string | null>(null)
+  const [replyTo, setReplyTo] = useState<ReplyReference | null>(null)
   const [isListening, setIsListening] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
   const [creatingStep, setCreatingStep] = useState(0)
@@ -134,16 +220,29 @@ function App() {
   const [shareOpen, setShareOpen] = useState(false)
   const [linkState, setLinkState] = useState<'idle' | 'sharing' | 'shared' | 'copied' | 'failed'>('idle')
   const [shareAssets, setShareAssets] = useState<AlbumAssets | null>(null)
-  const [shareState, setShareState] = useState<'preparing' | 'ready' | 'sharing' | 'shared' | 'downloaded' | 'failed'>('preparing')
+  const [shareState, setShareState] = useState<'preparing' | 'ready' | 'partial' | 'sharing' | 'shared' | 'downloaded' | 'failed'>('preparing')
+  const [storyExpanded, setStoryExpanded] = useState(false)
   const audioRef = useRef<ReturnType<typeof playSongPreview> | null>(null)
   const progressTimerRef = useRef<number | null>(null)
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
+  const creationTimersRef = useRef<number[]>([])
+  const sharePreparationRef = useRef(0)
+  const dialogTriggerRef = useRef<HTMLElement | null>(null)
+  const shareDialogRef = useRef<HTMLElement | null>(null)
+  const historyDialogRef = useRef<HTMLElement | null>(null)
+  const shareCloseRef = useRef<HTMLButtonElement | null>(null)
+  const historyCloseRef = useRef<HTMLButtonElement | null>(null)
   const previewDuration = result ? getSongPreviewDuration(result.mood.tempo) : 0
   const arrangementTracks = result ? getArrangementTracks(result) : []
   const draftTracks = draftResult ? getArrangementTracks(draftResult) : []
 
   useEffect(() => {
-    return () => audioRef.current?.stop()
+    return () => {
+      audioRef.current?.stop()
+      recognitionRef.current?.stop()
+      if (progressTimerRef.current) window.clearInterval(progressTimerRef.current)
+      creationTimersRef.current.forEach((timer) => window.clearTimeout(timer))
+    }
   }, [])
 
   useEffect(() => {
@@ -151,48 +250,100 @@ function App() {
   }, [result])
 
   useEffect(() => {
+    const syncSharedRoute = () => {
+      const sharedResult = readSharedResult()
+      audioRef.current?.stop()
+      audioRef.current = null
+      if (progressTimerRef.current) window.clearInterval(progressTimerRef.current)
+      progressTimerRef.current = null
+      setIsPlaying(false)
+      setPlayProgress(0)
+      setShareOpen(false)
+      setHistoryOpen(false)
+      setStoryExpanded(false)
+      if (sharedResult) {
+        setResult(sharedResult)
+        setStory(sharedResult.story)
+        setSharedView(true)
+        setView('result')
+        setTab('sleeve')
+      } else {
+        setResult(null)
+        setSharedView(false)
+        setView('compose')
+      }
+    }
+    window.addEventListener('hashchange', syncSharedRoute)
+    window.addEventListener('popstate', syncSharedRoute)
+    return () => {
+      window.removeEventListener('hashchange', syncSharedRoute)
+      window.removeEventListener('popstate', syncSharedRoute)
+    }
+  }, [])
+
+  useEffect(() => {
     if (!historyOpen && !shareOpen) return
     const previousOverflow = document.body.style.overflow
-    const closeSheet = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      setHistoryOpen(false)
-      setShareOpen(false)
+    const dialog = shareOpen ? shareDialogRef.current : historyDialogRef.current
+    const closeButton = shareOpen ? shareCloseRef.current : historyCloseRef.current
+    const background = Array.from(document.querySelectorAll<HTMLElement>('.topbar, .compose-view, .creating-view, .result-view'))
+    background.forEach((element) => {
+      element.inert = true
+      element.setAttribute('aria-hidden', 'true')
+    })
+    const handleDialogKeys = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setHistoryOpen(false)
+        setShareOpen(false)
+        return
+      }
+      if (event.key !== 'Tab' || !dialog) return
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), [href], [tabindex]:not([tabindex="-1"])'))
+      if (!focusable.length) return
+      const first = focusable[0]
+      const last = focusable.at(-1)!
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
     }
     document.body.style.overflow = 'hidden'
-    window.addEventListener('keydown', closeSheet)
+    window.addEventListener('keydown', handleDialogKeys)
+    window.requestAnimationFrame(() => closeButton?.focus())
     return () => {
       document.body.style.overflow = previousOverflow
-      window.removeEventListener('keydown', closeSheet)
+      window.removeEventListener('keydown', handleDialogKeys)
+      background.forEach((element) => {
+        element.inert = false
+        element.removeAttribute('aria-hidden')
+      })
+      dialogTriggerRef.current?.focus()
     }
   }, [historyOpen, shareOpen])
 
-  useEffect(() => {
-    if (!result) return
-    let active = true
-    void prepareAlbumAssets(result)
-      .then((assets) => {
-        if (!active) return
-        setShareAssets(assets)
-        setShareState('ready')
-      })
-      .catch(() => {
-        if (active) setShareState('failed')
-      })
-    return () => {
-      active = false
-    }
-  }, [result])
+  const clearCreationTimers = () => {
+    creationTimersRef.current.forEach((timer) => window.clearTimeout(timer))
+    creationTimersRef.current = []
+  }
 
   const createSong = () => {
-    if (story.trim().length < 12) return
+    if (story.trim().length < MIN_STORY_LENGTH) return
+    recognitionRef.current?.stop()
+    clearCreationTimers()
     setView('creating')
     setCreatingStep(0)
-    const next = generateSong(story)
+    const next = generateSong(story, { replyTo: replyTo ?? undefined })
     setDraftResult(next)
-    window.setTimeout(() => setCreatingStep(1), 650)
-    window.setTimeout(() => setCreatingStep(2), 1300)
-    window.setTimeout(() => setCreatingStep(3), 1950)
-    window.setTimeout(() => {
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const timings = reducedMotion ? [40, 80, 120, 180] : [420, 820, 1220, 1500]
+    creationTimersRef.current = [
+      window.setTimeout(() => setCreatingStep(1), timings[0]),
+      window.setTimeout(() => setCreatingStep(2), timings[1]),
+      window.setTimeout(() => setCreatingStep(3), timings[2]),
+      window.setTimeout(() => {
       setShareAssets(null)
       setShareState('preparing')
       setSharedView(false)
@@ -200,10 +351,15 @@ function App() {
       setDraftResult(null)
       setView('result')
       setTab('sleeve')
-      const updated = [next, ...history.filter((item) => item.id !== next.id)].slice(0, 8)
-      setHistory(updated)
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(updated))
-    }, 2400)
+      setStoryExpanded(false)
+      setHistory((current) => {
+        const updated = [next, ...current.filter((item) => item.id !== next.id)].slice(0, 12)
+        saveHistory(updated)
+        return updated
+      })
+      creationTimersRef.current = []
+    }, timings[3]),
+    ]
   }
 
   const toggleListen = () => {
@@ -222,8 +378,12 @@ function App() {
     recognition.interimResults = false
     recognition.lang = 'zh-CN'
     recognition.onresult = (event) => {
-      const transcript = Array.from(event.results).map((item) => item[0].transcript).join('')
-      setStory((current) => `${current}${current ? ' ' : ''}${transcript}`)
+      let transcript = ''
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const speechResult = event.results[index]
+        if (speechResult.isFinal !== false) transcript += speechResult[0].transcript
+      }
+      if (transcript) setStory((current) => appendStory(current, transcript))
     }
     recognition.onend = () => setIsListening(false)
     recognition.onerror = () => setIsListening(false)
@@ -238,6 +398,7 @@ function App() {
     setIsPlaying(false)
     setPlayProgress(0)
     if (progressTimerRef.current) window.clearInterval(progressTimerRef.current)
+    progressTimerRef.current = null
   }
 
   const togglePlay = () => {
@@ -295,15 +456,8 @@ function App() {
 
   const handleShareAlbum = async () => {
     if (!result || shareState === 'sharing' || shareState === 'preparing') return
-    if (!shareAssets) {
-      setShareState('preparing')
-      try {
-        const assets = await prepareAlbumAssets(result)
-        setShareAssets(assets)
-        setShareState('ready')
-      } catch {
-        setShareState('failed')
-      }
+    if (!shareAssets || shareState === 'partial' || shareState === 'failed') {
+      prepareShareStudio(result)
       return
     }
     setShareState('sharing')
@@ -337,12 +491,64 @@ function App() {
   }
 
   const handleDownloadPoster = () => {
-    if (!result || !shareAssets) return
+    if (!result || !shareAssets?.poster) return
     downloadStoryPoster(result, shareAssets)
   }
 
+  const prepareShareStudio = (record: SongResult) => {
+    const requestId = ++sharePreparationRef.current
+    setShareAssets(null)
+    setShareState('preparing')
+    void prepareAlbumAssets(record)
+      .then((assets) => {
+        if (requestId !== sharePreparationRef.current) return
+        setShareAssets(assets)
+        setShareState(assets.cover && assets.poster && assets.audio ? 'ready' : 'partial')
+      })
+      .catch(() => {
+        if (requestId === sharePreparationRef.current) setShareState('failed')
+      })
+  }
+
+  const openShareStudio = (event?: ReactMouseEvent<HTMLButtonElement>) => {
+    if (!result) return
+    dialogTriggerRef.current = event?.currentTarget ?? document.activeElement as HTMLElement | null
+    setLinkState('idle')
+    setShareOpen(true)
+    prepareShareStudio(result)
+  }
+
+  const openHistory = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    dialogTriggerRef.current = event.currentTarget
+    setHistoryOpen(true)
+  }
+
+  const rerollTitle = () => {
+    if (!result) return
+    const nextTitle = getAlternateTitle(result, 1)
+    const updated = generateSong(result.story, {
+        id: result.id,
+        createdAt: result.createdAt,
+        title: nextTitle,
+        moodId: result.mood.id,
+        replyTo: result.replyTo,
+    })
+    setHistory((items) => {
+      const nextItems = items.map((item) => item.id === updated.id ? updated : item)
+      saveHistory(nextItems)
+      return nextItems
+    })
+    sharePreparationRef.current += 1
+    setShareAssets(null)
+    setShareState('preparing')
+    setResult(updated)
+  }
+
   const reset = () => {
+    clearCreationTimers()
+    sharePreparationRef.current += 1
     stopPlayback()
+    recognitionRef.current?.stop()
     setShareAssets(null)
     setShareState('preparing')
     setView('compose')
@@ -351,10 +557,14 @@ function App() {
     setSharedView(false)
     setReplyTo(null)
     setShareOpen(false)
+    setHistoryOpen(false)
+    setStoryExpanded(false)
     window.history.replaceState({}, '', window.location.pathname)
   }
 
   const openHistoryItem = (item: SongResult) => {
+    clearCreationTimers()
+    sharePreparationRef.current += 1
     stopPlayback()
     setShareAssets(null)
     setShareState('preparing')
@@ -364,6 +574,7 @@ function App() {
     setHistoryOpen(false)
     setView('result')
     setTab('sleeve')
+    setStoryExpanded(false)
   }
 
   const startOwnStory = () => {
@@ -374,10 +585,24 @@ function App() {
 
   const startReply = () => {
     if (!result) return
-    const title = result.title
+    const reference = { title: result.title }
     reset()
-    setReplyTo(title)
-    setStory(`听完《${title}》，我想起了……`)
+    setReplyTo(reference)
+    setStory('')
+  }
+
+  const handleTabKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, currentTab: ResultTab) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+    event.preventDefault()
+    const currentIndex = RESULT_TABS.findIndex(([id]) => id === currentTab)
+    const nextIndex = event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? RESULT_TABS.length - 1
+        : (currentIndex + (event.key === 'ArrowRight' ? 1 : -1) + RESULT_TABS.length) % RESULT_TABS.length
+    const nextTab = RESULT_TABS[nextIndex][0]
+    setTab(nextTab)
+    document.getElementById(`record-tab-${nextTab}`)?.focus()
   }
 
   return (
@@ -390,11 +615,11 @@ function App() {
         {view === 'result' && !sharedView && <Logo />}
         {sharedView ? (
           <span className="shared-edition">SHARED RECORD</span>
-        ) : (
-          <button className="history-button" onClick={() => setHistoryOpen(true)} aria-label="打开作品历史">
+        ) : view !== 'creating' ? (
+          <button className="history-button" onClick={openHistory} aria-label="打开作品历史">
             <Icon name="history" size={19} /><span>唱片架</span>
           </button>
-        )}
+        ) : <span className="pressing-label">PRESSING 01</span>}
       </header>
 
       {view === 'compose' && (
@@ -407,7 +632,7 @@ function App() {
           {replyTo && (
             <div className="reply-context">
               <span>正在回应</span>
-              <strong>《{replyTo}》</strong>
+              <strong>《{replyTo.title}》</strong>
               <button onClick={() => { setReplyTo(null); setStory('') }}>改写自己的故事</button>
             </div>
           )}
@@ -418,8 +643,8 @@ function App() {
             </div>
             <textarea
               value={story}
-              onChange={(event) => setStory(event.target.value.slice(0, 1000))}
-              placeholder="比如：那年夏天，外婆每天都会在院子里给我讲故事……"
+              onChange={(event) => setStory(event.target.value.slice(0, MAX_STORY_LENGTH))}
+              placeholder={replyTo ? '不用评价原故事，只写它让你想起的那个人、那个瞬间……' : '比如：那年夏天，外婆每天都会在院子里给我讲故事……'}
               aria-label="输入你的故事"
             />
             <div className="story-actions">
@@ -430,6 +655,14 @@ function App() {
               <span className="privacy-note">本站不上传故事文本</span>
             </div>
           </div>
+          <p className={`story-guidance ${story.trim().length > 0 && story.trim().length < MIN_STORY_LENGTH ? 'needs-more' : ''}`}>
+            {story.trim().length > 0 && story.trim().length < MIN_STORY_LENGTH
+              ? `再写 ${MIN_STORY_LENGTH - story.trim().length} 个字，就能开始制作`
+              : '写到谁、哪个瞬间，以及一个你最记得的细节。'}
+          </p>
+          <button className="create-button" disabled={story.trim().length < MIN_STORY_LENGTH} onClick={createSong}>
+            <Icon name="spark" /><span>制作我的私人唱片</span><small>约 19 秒</small>
+          </button>
           <div className="sample-block">
             <span>可以从一个自然的时刻开始</span>
             <div className="sample-row">
@@ -440,22 +673,19 @@ function App() {
               ))}
             </div>
           </div>
-          <button className="create-button" disabled={story.trim().length < 12} onClick={createSong}>
-            <Icon name="spark" /><span>制作我的私人唱片</span><small>约 19 秒</small>
-          </button>
         </section>
       )}
 
       {view === 'creating' && (
-        <section className="creating-view page-enter">
+        <section className="creating-view page-enter" role="status" aria-live="polite" aria-atomic="true">
           <div className="sound-orbit">
             <span className="orbit orbit-one" /><span className="orbit orbit-two" /><span className="orbit orbit-three" />
             <div className="orbit-center"><Icon name="spark" size={28} /></div>
           </div>
           <div className="creating-copy">
             <span className="eyebrow"><i /> PRESSING YOUR RECORD</span>
-            <h2>正在把这段生活<br />压进一张唱片</h2>
-            <p>{draftResult ? `${draftResult.theme}，听起来是${draftResult.mood.label}里带一点${draftResult.secondaryMood}。` : '先听懂故事，再为它安排声音。'}</p>
+            <h2>正在为这段生活<br />安排一段声音</h2>
+            <p>{draftResult ? `${draftResult.theme}，会以${draftResult.mood.label}为主色，留一点${draftResult.secondaryMood}。` : '从文字里留下画面，再为它组织旋律。'}</p>
           </div>
           {draftResult && (
             <div className="creating-insight">
@@ -465,8 +695,8 @@ function App() {
           )}
           <div className="creating-steps">
             {[
-              draftResult ? `听见 ${draftResult.mood.label}与${draftResult.secondaryMood}` : '听见故事里的情绪',
-              draftResult ? `留下 ${draftResult.keywords.slice(0, 2).join('与')}` : '找到值得留下的细节',
+              draftResult ? `选择 ${draftResult.mood.label}作为声音主色` : '选择这段故事的声音主色',
+              draftResult ? `保留 ${draftResult.keywords.slice(0, 2).join('与')}` : '保留故事里的具体画面',
               draftResult ? `安排 ${draftTracks.length} 层声音` : '为它安排专属原声',
             ].map((label, index) => (
               <div className={creatingStep > index ? 'complete' : creatingStep === index ? 'active' : ''} key={label}>
@@ -483,17 +713,30 @@ function App() {
           className={`result-view page-enter ${sharedView ? 'shared-result' : ''}`}
           style={{ '--mood-color': result.mood.color, '--mood-accent': result.mood.accent } as CSSProperties}
         >
+          {result.replyTo && (
+            <div className="record-reply-line"><span>回应</span>《{result.replyTo.title}》</div>
+          )}
           <div className="result-hero">
             <div className={sharedView ? 'shared-album-stage' : 'album-stage'}>
               {!sharedView && <div className={`album-disc ${isPlaying ? 'spinning' : ''}`}><i /></div>}
               <AlbumArtwork result={result} compact={!sharedView} />
             </div>
-            <div className="song-heading">
-              <span className="eyebrow">PRIVATE RECORD · {new Date(result.createdAt).getFullYear()}</span>
-              <h1>《{result.title}》</h1>
-              <p>{result.theme} · {result.mood.genre}</p>
-            </div>
+            {!sharedView && (
+              <div className="song-heading">
+                <span className="eyebrow">PRIVATE RECORD · {new Date(result.createdAt).getFullYear()}</span>
+                <h1>《{result.title}》</h1>
+                <p>{result.theme} · {result.mood.genre}</p>
+                <button className="retitle-button" onClick={rerollTitle}>换一个唱片名</button>
+              </div>
+            )}
           </div>
+
+          {sharedView && (
+            <div className="shared-record-intro">
+              <span>{result.theme} · {new Date(result.createdAt).toLocaleDateString('zh-CN')}</span>
+              <blockquote>“{result.excerpt}”</blockquote>
+            </div>
+          )}
 
           <div className="player-card">
             <button className="play-button" onClick={togglePlay} aria-label={isPlaying ? '暂停' : '播放'}>
@@ -515,22 +758,16 @@ function App() {
             </div>
           </div>
 
-          <button
-            className={`share-album-button state-${shareState}`}
-            onClick={() => {
-              setLinkState('idle')
-              setShareOpen(true)
-            }}
-          >
-            <span className="share-icon"><Icon name={shareState === 'shared' || shareState === 'downloaded' ? 'check' : 'share'} size={18} /></span>
-            <span>
-              <strong>
-                {sharedView ? '把这张私人唱片转发给朋友' : '发行这张私人故事唱片'}
-              </strong>
-              <small>专属链接 · 4:5 海报 · {Math.round(previewDuration)} 秒纯音乐</small>
-            </span>
-            <Icon name="arrow" size={16} />
-          </button>
+          {!sharedView && (
+            <button className={`share-album-button state-${shareState}`} onClick={openShareStudio}>
+              <span className="share-icon"><Icon name={shareState === 'shared' || shareState === 'downloaded' ? 'check' : 'share'} size={18} /></span>
+              <span>
+                <strong>{result.replyTo ? '把这张回应唱片发回给 TA' : '发行这张私人故事唱片'}</strong>
+                <small>专属链接 · 4:5 海报 · {Math.round(previewDuration)} 秒纯音乐</small>
+              </span>
+              <Icon name="arrow" size={16} />
+            </button>
+          )}
 
           {sharedView ? (
             <div className="shared-story-content">
@@ -558,25 +795,46 @@ function App() {
                   <Icon name="arrow" size={19} />
                 </button>
               </div>
+              <button className="shared-forward-button" onClick={openShareStudio}><Icon name="share" size={16} />转发这张唱片</button>
               <p className="shared-signature">由叙音为一段真实故事制作</p>
             </div>
           ) : (
             <>
-              <nav className="result-tabs" aria-label="作品内容">
-                {([['sleeve', '唱片内页'], ['sound', '声音设计'], ['notes', '制作手记']] as const).map(([id, label]) => (
-                  <button key={id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}>{label}</button>
+              <nav className="result-tabs" aria-label="作品内容" role="tablist">
+                {RESULT_TABS.map(([id, label]) => (
+                  <button
+                    id={`record-tab-${id}`}
+                    key={id}
+                    className={tab === id ? 'active' : ''}
+                    role="tab"
+                    aria-selected={tab === id}
+                    aria-controls={`record-panel-${id}`}
+                    tabIndex={tab === id ? 0 : -1}
+                    onClick={() => setTab(id)}
+                    onKeyDown={(event) => handleTabKeyDown(event, id)}
+                  >{label}</button>
                 ))}
               </nav>
 
               {tab === 'sleeve' && (
-                <div className="tab-panel sleeve-panel">
+                <div className="tab-panel sleeve-panel" id="record-panel-sleeve" role="tabpanel" aria-labelledby="record-tab-sleeve">
                   <article className="liner-note-card">
                     <div className="liner-note-heading">
                       <span className="section-label">LINER NOTES · 唱片内页</span>
                       <small>一段真实生活</small>
                     </div>
                     <h3>{result.theme}</h3>
-                    <blockquote>{result.story}</blockquote>
+                    <blockquote id="record-story-text">{storyExpanded || result.story.length <= 180 ? result.story : `${result.story.slice(0, 180)}…`}</blockquote>
+                    {result.story.length > 180 && (
+                      <button
+                        className="story-expand-button"
+                        aria-expanded={storyExpanded}
+                        aria-controls="record-story-text"
+                        onClick={() => setStoryExpanded((expanded) => !expanded)}
+                      >
+                        {storyExpanded ? '收起故事' : '展开完整故事'}
+                      </button>
+                    )}
                     <div className="liner-note-tags">
                       <span>{result.mood.label}</span>
                       <span>{result.secondaryMood}</span>
@@ -585,14 +843,14 @@ function App() {
                   </article>
                   <div className="story-echo record-echo">
                     <span className="section-label">这张唱片留下的一句话</span>
-                    <blockquote>“{result.hook}”</blockquote>
+                    <blockquote>“{result.excerpt}”</blockquote>
                     <small>有些话没有说出口，也可以被一段旋律记住。</small>
                   </div>
                 </div>
               )}
 
               {tab === 'sound' && (
-                <div className="tab-panel sound-panel">
+                <div className="tab-panel sound-panel" id="record-panel-sound" role="tabpanel" aria-labelledby="record-tab-sound">
                   <div className="mood-card">
                     <div>
                       <span className="section-label">这张唱片的听感</span>
@@ -622,7 +880,7 @@ function App() {
               )}
 
               {tab === 'notes' && (
-                <div className="tab-panel notes-panel">
+                <div className="tab-panel notes-panel" id="record-panel-notes" role="tabpanel" aria-labelledby="record-tab-notes">
                   <div className="producer-note">
                     <span className="section-label">PRODUCER'S NOTE · 制作手记</span>
                     <h3>为什么它听起来像<br />{result.mood.description}</h3>
@@ -662,13 +920,17 @@ function App() {
             </>
           )}
 
-          {!sharedView && <button className="again-button" onClick={startOwnStory}>制作下一张私人唱片 <Icon name="arrow" size={16} /></button>}
+          {!sharedView && (
+            <button className="again-button" onClick={startOwnStory}>
+              {result.keywords[0] ? `再留下一段关于${result.keywords[0]}的记忆` : '制作下一张私人唱片'} <Icon name="arrow" size={16} />
+            </button>
+          )}
         </section>
       )}
 
       {shareOpen && result && (
         <div className="sheet-backdrop share-backdrop" onClick={() => setShareOpen(false)}>
-          <aside className="share-studio" role="dialog" aria-modal="true" aria-label="发行私人唱片" onClick={(event) => event.stopPropagation()}>
+          <aside ref={shareDialogRef} className="share-studio" role="dialog" aria-modal="true" aria-label="发行私人唱片" onClick={(event) => event.stopPropagation()}>
             <div className="sheet-handle" />
             <div className="share-studio-heading">
               <div>
@@ -676,17 +938,10 @@ function App() {
                 <h2>发行这张私人唱片</h2>
                 <p>选择一种最适合你故事的分享方式。</p>
               </div>
-              <button onClick={() => setShareOpen(false)}>关闭</button>
+              <button ref={shareCloseRef} onClick={() => setShareOpen(false)}>关闭</button>
             </div>
 
-            <div className="poster-preview">
-              <AlbumArtwork result={result} />
-              <div className="poster-preview-footer">
-                <i />
-                <span>{result.theme}</span>
-                <small>PRIVATE RECORD · XIYIN</small>
-              </div>
-            </div>
+            <PosterPreview result={result} poster={shareAssets?.poster} />
 
             <div className="release-options">
               <button onClick={handleShareLink} disabled={linkState === 'sharing'}>
@@ -709,10 +964,16 @@ function App() {
                   />
                 </label>
               )}
-              <button onClick={handleDownloadPoster} disabled={!shareAssets}>
+              <button onClick={handleDownloadPoster} disabled={!shareAssets?.poster}>
                 <span className="release-option-icon"><Icon name="download" /></span>
                 <span>
-                  <strong>{shareAssets ? '保存 4:5 故事海报' : '正在绘制故事海报…'}</strong>
+                  <strong>
+                    {shareAssets?.poster
+                      ? '保存 4:5 故事海报'
+                      : shareState === 'ready' || shareState === 'failed'
+                        ? '当前浏览器无法生成海报'
+                        : '正在绘制故事海报…'}
+                  </strong>
                   <small>适合朋友圈与小红书发布</small>
                 </span>
                 <Icon name="arrow" size={16} />
@@ -729,33 +990,35 @@ function App() {
                           ? '专辑文件已发送'
                           : shareState === 'downloaded'
                             ? '专辑文件已下载'
-                            : shareState === 'failed'
+                            : shareState === 'partial'
+                              ? '部分文件未生成，点此重试'
+                              : shareState === 'failed'
                               ? '重新生成分享文件'
                               : '分享封面、海报与音乐'}
                   </strong>
-                  <small>包含 PNG 封面和 WAV 纯音乐</small>
+                  <small>{shareState === 'partial' ? '成功的文件仍可在上方单独保存' : '包含 PNG 封面和 WAV 纯音乐'}</small>
                 </span>
                 <Icon name="arrow" size={16} />
               </button>
             </div>
-            <p className="release-note">完整故事只会在你主动分享作品链接时公开。</p>
+            <p className="release-note">链接内容只保存在网址片段中，不会发送给本站服务器；任何拿到链接的人都能查看。</p>
           </aside>
         </div>
       )}
 
       {historyOpen && (
         <div className="sheet-backdrop" onClick={() => setHistoryOpen(false)}>
-          <aside className="history-sheet" role="dialog" aria-modal="true" aria-label="唱片架" onClick={(event) => event.stopPropagation()}>
+          <aside ref={historyDialogRef} className="history-sheet" role="dialog" aria-modal="true" aria-label="唱片架" onClick={(event) => event.stopPropagation()}>
             <div className="sheet-handle" />
             <div className="sheet-heading">
               <div><span className="eyebrow">YOUR PRIVATE RECORDS</span><h2>私人唱片架</h2></div>
-              <button onClick={() => setHistoryOpen(false)}>关闭</button>
+              <button ref={historyCloseRef} onClick={() => setHistoryOpen(false)}>关闭</button>
             </div>
             {history.length ? (
               <div className="history-list">
                 {history.map((item) => (
                   <button key={item.id} onClick={() => openHistoryItem(item)}>
-                    <i style={{ background: item.mood.color }} />
+                    <AlbumArtwork result={item} mini />
                     <div>
                       <strong>《{item.title}》</strong>
                       <span>{item.mood.label} · {new Date(item.createdAt).toLocaleDateString('zh-CN')}</span>

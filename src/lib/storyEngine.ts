@@ -1,4 +1,4 @@
-import type { LyricSection, MoodId, MoodProfile, SongResult } from '../types'
+import type { LyricSection, MoodId, MoodProfile, ReplyReference, SongResult } from '../types'
 
 type ScorableMood = MoodProfile & { words: string[] }
 
@@ -115,6 +115,7 @@ const STORY_IMAGES = [
   '夏夜', '星星', '月亮', '阳光', '雨', '雪', '风', '海面', '大海', '山',
   '院子', '蒲扇', '火车', '车站', '站台', '城市', '故乡', '老家', '房间',
   '照片', '书信', '日记', '礼物', '背影', '笑容', '眼泪', '拥抱', '晚安',
+  '生日', '蛋糕', '烛光', '灯光', '窗外', '咖啡', '教室', '操场', '街道', '餐桌',
   '梦想', '自由', '青春', '明天', '告别', '重逢', '回家', '远方',
 ]
 
@@ -176,14 +177,7 @@ function extractKeywords(story: string, mood: ScorableMood) {
   const found = STORY_IMAGES.filter((word) => story.includes(word))
   const moodWords = mood.words.filter((word) => story.includes(word) && word.length > 1)
   const unique = [...new Set([...found, ...moodWords])]
-  if (unique.length >= 4) return unique.slice(0, 5)
-
-  const candidates = splitStory(story)
-    .flatMap((sentence) => sentence.split(/[，,、\s]/))
-    .map((chunk) => chunk.replace(/^(我|你|他|她|我们|他们)/, '').slice(0, 5))
-    .filter((chunk) => chunk.length >= 2)
-
-  return [...new Set([...unique, ...candidates, mood.label])].slice(0, 5)
+  return [...new Set([...unique, mood.label])].slice(0, 5)
 }
 
 function shortLine(text: string, max = 13) {
@@ -192,13 +186,30 @@ function shortLine(text: string, max = 13) {
   return stripped.slice(0, max).trim()
 }
 
+function buildStoryExcerpt(story: string, keywords: string[]) {
+  const sentences = story
+    .split(/[。！？!?；;\n]+/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length >= 6)
+  const ranked = sentences
+    .map((sentence, index) => ({
+      sentence,
+      score: index
+        + (/(只是|这一次|终于|原来|天亮|回头|换我|没说出口)/.test(sentence) ? 8 : 0)
+        + keywords.reduce((total, keyword) => total + (sentence.includes(keyword) ? 2 : 0), 0),
+    }))
+    .sort((a, b) => b.score - a.score)
+  const excerpt = ranked[0]?.sentence || story.trim()
+  return excerpt.length > 46 ? `${excerpt.slice(0, 45)}…` : excerpt
+}
+
 function buildLyrics(story: string, mood: ScorableMood, keywords: string[], seed: number) {
   const sentences = splitStory(story)
   const first = shortLine(sentences[0])
   const middle = shortLine(sentences[Math.floor(sentences.length / 2)] || sentences[0])
   const last = shortLine(sentences.at(-1) || sentences[0])
-  const image = keywords[0] || '那一天'
-  const detail = keywords[1] || '旧时光'
+  const image = keywords.find((keyword) => STORY_IMAGES.includes(keyword)) || '那一天'
+  const detail = keywords.find((keyword) => keyword !== image && STORY_IMAGES.includes(keyword)) || '旧时光'
 
   const openings = [
     [first, `风把${detail}吹得很远`, middle, '我把沉默留在原点'],
@@ -211,13 +222,13 @@ function buildLyrics(story: string, mood: ScorableMood, keywords: string[], seed
     [`我沿着记忆往回走`, `又遇见${image}的路口`],
   ]
   const hooks: Record<MoodId, string[]> = {
-    nostalgic: [`我还记得 ${image}的风`, '吹过从前 也吹向以后'],
-    joyful: [`就让我们 向着${image}奔跑`, '把每次心跳 都唱成拥抱'],
-    melancholy: ['如果想念 也有尽头', `为何${image} 还停在胸口`],
-    hopeful: ['天亮以前 别松开手', `越过${image} 就会看见以后`],
-    tense: [`让所有沉默 燃成${image}的火`, '这一次我 不再退后'],
-    tender: [`我会把${image} 轻轻放在心口`, '平凡的爱 也足够长久'],
-    calm: [`让风经过 ${image}不必开口`, '此刻安静 就已经足够'],
+    nostalgic: [`我还记得${image}的风`, '吹过从前，也吹向以后'],
+    joyful: [`就让我们向着${image}奔跑`, '把每次心跳都唱成拥抱'],
+    melancholy: ['如果想念也有尽头', `为何${image}还停在胸口`],
+    hopeful: ['天亮以前别松开手', `走过${image}就会看见以后`],
+    tense: [`让所有沉默燃成${image}的火`, '这一次我不再退后'],
+    tender: [`我会把${image}轻轻放在心口`, '平凡的爱也足够长久'],
+    calm: [`让风经过，${image}不必开口`, '此刻安静就已经足够'],
   }
   const hook = hooks[mood.id]
   const bridges = [
@@ -235,16 +246,25 @@ function buildLyrics(story: string, mood: ScorableMood, keywords: string[], seed
   return { sections, hook: hook.join(' / ') }
 }
 
-function getTheme(story: string, keywords: string[], mood: MoodProfile) {
+function getTheme(story: string, mood: MoodProfile) {
   const rules = [
     { words: ['妈妈', '爸爸', '外婆', '爷爷', '奶奶', '家人'], theme: '关于家与陪伴' },
-    { words: ['爱', '喜欢', '心动', '分手', '拥抱'], theme: '关于爱与错过' },
-    { words: ['朋友', '同学', '我们'], theme: '关于同行与告别' },
-    { words: ['故乡', '老家', '回家', '城市'], theme: '关于离开与归来' },
-    { words: ['梦想', '工作', '辞职', '出发'], theme: '关于选择与成长' },
+    { words: ['生日', '蛋糕', '烛光', '庆祝'], theme: '关于庆祝与长大' },
+    { words: ['爱人', '心动', '分手', '拥抱'], theme: '关于爱与错过' },
+    { words: ['朋友', '同学'], theme: '关于同行与记得' },
+    { words: ['故乡', '老家'], theme: '关于离开与归来' },
+    { words: ['梦想', '工作', '辞职', '出发', '重新'], theme: '关于选择与成长' },
   ]
   return rules.find((rule) => rule.words.some((word) => story.includes(word)))?.theme
-    ?? `关于${keywords[0] || mood.description}`
+    ?? ({
+      nostalgic: '关于想念与时间',
+      joyful: '关于快乐的瞬间',
+      melancholy: '关于没说完的话',
+      hopeful: '关于继续向前',
+      tense: '关于心里的风暴',
+      tender: '关于日常里的温柔',
+      calm: '关于安静的一刻',
+    } satisfies Record<MoodId, string>)[mood.id]
 }
 
 function buildPrompt(result: Omit<SongResult, 'prompt'>) {
@@ -274,37 +294,69 @@ ${lyrics}
 歌曲时长 2 分 40 秒至 3 分 20 秒；普通话自然咬字；副歌旋律清晰易记；不要修改核心故事意象“${result.keywords.slice(0, 3).join('、')}”。`
 }
 
-function makeTitle(keywords: string[], mood: MoodProfile, seed: number) {
-  const keyword = keywords[0] || mood.label
-  const patterns = [
-    `${keyword}还在唱`,
-    `把${keyword}留给风`,
-    `${keyword}以后的我们`,
-    `第${(seed % 8) + 1}次想起${keyword}`,
-    `${keyword}没有说再见`,
-  ]
-  return pick(patterns, seed, 4)
+function makeTitleCandidates(story: string, keywords: string[]) {
+  const image = keywords.find((keyword) => STORY_IMAGES.includes(keyword) && keyword.length <= 3)
+  const detail = keywords.find((keyword) => keyword !== image && STORY_IMAGES.includes(keyword) && keyword.length <= 3)
+  const candidates: string[] = []
+
+  if (/(生日|蛋糕|烛光)/.test(story)) candidates.push('生日烛光熄灭前')
+  if (story.includes('蒲扇')) candidates.push(story.includes('换我') ? '换我为你扇风' : '蒲扇里的夏夜')
+  if (story.includes('站台') && story.includes('雨')) candidates.push('雨停在站台')
+  if (story.includes('火车') && /(海|天亮)/.test(story)) candidates.push('天亮时，海在等我')
+  if (/(窗|窗外)/.test(story) && /(灯|灯光)/.test(story)) candidates.push('窗外最后一盏灯')
+  if (story.includes('照片')) candidates.push('照片背面的那一天')
+  if (/(书信|信)/.test(story)) candidates.push('一封刚拆开的信')
+  if (story.includes('回家') && /(外婆|爷爷|奶奶|妈妈|爸爸|故乡|老家|多年|去年)/.test(story)) candidates.push('回家以后风还记得')
+  if (image && /(告别|再见|离开)/.test(story)) candidates.push(`${image}没说完的再见`)
+  if (image && /(出发|远方|自由)/.test(story)) candidates.push(`越过${image}以后`)
+
+  candidates.push(
+    ...(image ? [`${image}还在风里`, `把${image}留给夜色`] : []),
+    ...(detail ? [`${detail}没有走远`] : []),
+    '那一天没有走远',
+    '平凡的一天值得记住',
+    '故事留在夜色里',
+  )
+  return [...new Set(candidates)].filter((title) => title.length <= 10)
 }
 
-export function generateSong(story: string): SongResult {
+interface GenerateSongOptions {
+  id?: string
+  createdAt?: number
+  replyTo?: ReplyReference
+  title?: string
+  moodId?: MoodId
+}
+
+export function generateSong(story: string, options: GenerateSongOptions = {}): SongResult {
   const normalizedStory = story.trim().replace(/\s+/g, ' ')
   const seed = hashStory(normalizedStory)
   const rankedMoods = scoreMoods(normalizedStory)
-  const mood = rankedMoods[0].mood
+  const mood = options.moodId ? MOODS[options.moodId] : rankedMoods[0].mood
   const secondaryMood = rankedMoods[1].score > 0 ? rankedMoods[1].mood.label : '克制'
   const keywords = extractKeywords(normalizedStory, mood)
+  const excerpt = buildStoryExcerpt(normalizedStory, keywords)
   const { sections, hook } = buildLyrics(normalizedStory, mood, keywords, seed)
+  const titleCandidates = makeTitleCandidates(normalizedStory, keywords)
   const base = {
-    id: `${Date.now()}-${seed}`,
-    createdAt: Date.now(),
+    id: options.id ?? `${options.createdAt ?? Date.now()}-${seed}`,
+    createdAt: options.createdAt ?? Date.now(),
     story: normalizedStory,
-    title: makeTitle(keywords, mood, seed),
+    title: options.title ?? titleCandidates[0],
     mood,
     secondaryMood,
-    theme: getTheme(normalizedStory, keywords, mood),
+    theme: getTheme(normalizedStory, mood),
     keywords,
+    excerpt,
     hook,
     lyrics: sections,
+    replyTo: options.replyTo,
   }
   return { ...base, prompt: buildPrompt(base) }
+}
+
+export function getAlternateTitle(result: SongResult, offset: number) {
+  const candidates = makeTitleCandidates(result.story, result.keywords)
+  const currentIndex = Math.max(0, candidates.indexOf(result.title))
+  return candidates[(currentIndex + offset) % candidates.length]
 }

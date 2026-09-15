@@ -27,6 +27,10 @@ export interface LyricSection {
   lines: string[]
 }
 
+export interface ReplyReference {
+  title: string
+}
+
 export interface SongResult {
   id: string
   createdAt: number
@@ -36,7 +40,9 @@ export interface SongResult {
   secondaryMood: string
   theme: string
   keywords: string[]
+  excerpt: string
   hook: string
   lyrics: LyricSection[]
   prompt: string
+  replyTo?: ReplyReference
 }
