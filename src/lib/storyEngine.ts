@@ -628,7 +628,7 @@ function deriveMoodProfile(mood: MoodDefinition, analysis: Omit<StoryEmotionAnal
   const { valence, arousal, direction, dimensions } = analysis
   const tempoRanges: Record<MoodId, [number, number]> = {
     nostalgic: [64, 76],
-    joyful: [98, 116],
+    joyful: [108, 124],
     melancholy: [56, 70],
     hopeful: [78, 96],
     tense: [106, 128],
@@ -912,11 +912,18 @@ function makeTitleCandidates(
   story: string,
   keywords: string[],
   sensitivity: StoryEmotionAnalysis['sensitivity'] = 'standard',
+  moodId: MoodId = 'calm',
+  direction: NarrativeDirection = 'steady',
 ) {
   if (sensitivity === 'sensitive') return ['未命名的那一页', '留在这里的一段话', '这一页没有名字']
   const includes = (...terms: string[]) => hasAffirmedStoryTerm(story, terms)
+  const findTerm = (terms: string[]) => terms.find((term) => includes(term))
   const image = keywords.find((keyword) => STORY_IMAGES.includes(keyword) && keyword.length <= 3)
   const detail = keywords.find((keyword) => keyword !== image && STORY_IMAGES.includes(keyword) && keyword.length <= 3)
+  const person = findTerm(['外婆', '爷爷', '奶奶', '妈妈', '爸爸', '孩子', '朋友', '爱人'])
+  const place = findTerm(['院子', '车站', '站台', '城市', '故乡', '老家', '房间', '教室', '操场', '街道', '海边'])
+  const object = findTerm(['蒲扇', '照片', '书信', '日记', '礼物', '蛋糕', '烛光', '咖啡'])
+  const scene = findTerm(['夏夜', '星星', '月亮', '阳光', '雨', '雪', '风', '海面', '大海', '山', '灯光', '窗外', '明天', '远方'])
   const candidates: string[] = []
 
   if (includes('生日', '蛋糕', '烛光')) candidates.push('生日烛光熄灭前')
@@ -932,13 +939,69 @@ function makeTitleCandidates(
   if (image && includes('告别', '再见', '离开')) candidates.push(`${image}没说完的再见`)
   if (image && includes('出发', '远方', '自由')) candidates.push(`越过${image}以后`)
 
-  candidates.push(
-    ...(image ? [`${image}还在风里`, `把${image}留给夜色`] : []),
-    ...(detail ? [`${detail}没有走远`] : []),
-    '那一天没有走远',
-    '平凡的一天值得记住',
-    '故事留在夜色里',
-  )
+  const contextualTitles: Record<MoodId, string[]> = {
+    joyful: [
+      ...(person ? [`和${person}大笑的那天`] : []),
+      ...(place ? [`${place}装满了笑声`] : []),
+      ...(object ? [`${object}旁边的笑声`] : []),
+      ...(scene ? [`${scene}正好，笑声也在`] : []),
+      '笑声落在阳光里',
+      '快乐正好发生',
+      '今天值得欢呼',
+    ],
+    hopeful: [
+      ...(place ? [`从${place}走向天亮`] : []),
+      ...(object ? [`带着${object}重新出发`] : []),
+      ...(scene ? [`${scene}之后会有光`] : []),
+      '明天从这里开始',
+      '下一站会有光',
+      '风吹向新的方向',
+    ],
+    melancholy: [
+      ...(place ? [`留在${place}的那句话`] : []),
+      ...(object ? [`${object}背后的沉默`] : []),
+      ...(scene ? [`${scene}替我记得`] : []),
+      '那句话停在夜里',
+      '再见没有说完',
+      '后来只剩回声',
+    ],
+    nostalgic: [
+      ...(person ? [`${person}还在旧时光里`] : []),
+      ...(place ? [`${place}还留着那阵风`] : []),
+      ...(object ? [`${object}还记得那一天`] : []),
+      ...(scene ? [`${scene}没有走远`] : []),
+      '风记得那年夏天',
+      '旧时光没有走远',
+      '照片里的那阵风',
+    ],
+    tender: [
+      ...(person ? [`把温柔留给${person}`] : []),
+      ...(object ? [`${object}里的温柔`] : []),
+      ...(scene ? [`轻轻把${scene}接住`] : []),
+      '有人轻轻接住我',
+      '把温柔留在这里',
+      '这一刻被好好记住',
+    ],
+    calm: [
+      ...(place ? [`${place}慢慢安静下来`] : []),
+      ...(scene ? [`风停在${scene}旁边`] : []),
+      '风经过安静的夜',
+      '世界慢慢静下来',
+      '此刻不必说话',
+    ],
+    tense: [
+      ...(place ? [`${place}里的心跳声`] : []),
+      ...(scene ? [`${scene}之前的心跳`] : []),
+      '心跳跑在风暴前',
+      '沉默开始发烫',
+      '风暴还没有名字',
+    ],
+  }
+  candidates.push(...contextualTitles[moodId])
+  if (direction === 'rising') candidates.push('后来，微光抵达', '走到天亮那一边')
+  if (direction === 'falling') candidates.push('后来，声音停在夜里')
+  if (direction === 'bittersweet') candidates.push('一半温暖，一半告别')
+  if (detail) candidates.push(`${detail}没有走远`)
   return [...new Set(candidates)].filter((title) => title.length <= 10)
 }
 
@@ -984,7 +1047,7 @@ export function generateSong(story: string, options: GenerateSongOptions = {}): 
   const keywords = extractKeywords(normalizedStory, moodDefinition)
   const excerpt = buildStoryExcerpt(normalizedStory, keywords, analysis.sensitivity)
   const { sections, hook } = buildLyrics(normalizedStory, mood, keywords, seed)
-  const titleCandidates = makeTitleCandidates(normalizedStory, keywords, analysis.sensitivity)
+  const titleCandidates = makeTitleCandidates(normalizedStory, keywords, analysis.sensitivity, mood.id, analysis.direction)
   const base = {
     id: options.id ?? `${options.createdAt ?? Date.now()}-${seed}`,
     createdAt: options.createdAt ?? Date.now(),
@@ -1004,7 +1067,13 @@ export function generateSong(story: string, options: GenerateSongOptions = {}): 
 }
 
 export function getAlternateTitle(result: SongResult, offset: number) {
-  const candidates = makeTitleCandidates(result.story, result.keywords, result.analysis.sensitivity)
+  const candidates = makeTitleCandidates(
+    result.story,
+    result.keywords,
+    result.analysis.sensitivity,
+    result.mood.id,
+    result.analysis.direction,
+  )
   const currentIndex = Math.max(0, candidates.indexOf(result.title))
   return candidates[(currentIndex + offset) % candidates.length]
 }

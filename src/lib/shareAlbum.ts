@@ -1,3 +1,4 @@
+import { strToU8, zipSync } from 'fflate'
 import { renderSongPreviewWav } from './audioEngine'
 import { assessStorySafety, generateSong, hasAffirmedStoryTerm } from './storyEngine'
 import type { MoodId, SongResult } from '../types'
@@ -436,40 +437,38 @@ async function copyText(value: string) {
   }
 }
 
-export async function shareAlbum(
+export async function createAlbumArchive(
   result: SongResult,
   assets: AlbumAssets,
-): Promise<'shared' | 'downloaded' | 'cancelled'> {
+): Promise<Blob> {
   const name = safeFilename(result.title)
-  const files = [
-    assets.cover ? new File([assets.cover], `${name}-专辑封面.png`, { type: 'image/png' }) : null,
-    assets.poster ? new File([assets.poster], `${name}-故事海报.png`, { type: 'image/png' }) : null,
-    assets.audio ? new File([assets.audio], `${name}-纯音乐.wav`, { type: 'audio/wav' }) : null,
-  ].filter((file): file is File => Boolean(file))
-  const subject = result.keywords[0] || '这段生活'
-  const shareText = result.analysis.sensitivity === 'sensitive'
-    ? `我为一段不容易说出口的经历留下一张私人唱片《${result.title}》，想谨慎地分享给你。`
-    : result.replyTo
-    ? `听完《${result.replyTo.title}》，我把想起的那段生活做成了《${result.title}》。这是一张回应唱片，想发回给你。`
-    : `我把关于${subject}的那段生活，做成了《${result.title}》。这是为这段生活留下的一张私人唱片。`
-  const shareData = {
-    title: `《${result.title}》· 一张叙音私人唱片`,
-    text: shareText,
-    url: createShareUrl(result),
-    files,
+  const entries: Record<string, Uint8Array> = {}
+  const addBlob = async (filename: string, blob?: Blob) => {
+    if (blob) entries[filename] = new Uint8Array(await blob.arrayBuffer())
   }
+  await Promise.all([
+    addBlob(`${name}-专辑封面.png`, assets.cover),
+    addBlob(`${name}-故事海报.png`, assets.poster),
+    addBlob(`${name}-纯音乐.wav`, assets.audio),
+  ])
+  entries[`${name}-作品信息.txt`] = strToU8([
+    `《${result.title}》`,
+    result.theme,
+    '',
+    result.story,
+    '',
+    `可播放链接：${createShareUrl(result)}`,
+    '',
+    '由叙音生成',
+  ].join('\n'))
+  const archive = zipSync(entries, { level: 0 })
+  const archiveBuffer = archive.buffer.slice(archive.byteOffset, archive.byteOffset + archive.byteLength) as ArrayBuffer
+  return new Blob([archiveBuffer], { type: 'application/zip' })
+}
 
-  if (navigator.share && files.length && navigator.canShare?.({ files })) {
-    try {
-      await navigator.share(shareData)
-      return 'shared'
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') return 'cancelled'
-    }
-  }
-
-  files.forEach((file) => download(file, file.name))
-  return 'downloaded'
+export async function exportAlbumBundle(result: SongResult, assets: AlbumAssets): Promise<void> {
+  const archive = await createAlbumArchive(result, assets)
+  download(archive, `${safeFilename(result.title)}-完整唱片包.zip`)
 }
 
 export async function shareAlbumLink(result: SongResult) {
@@ -496,6 +495,6 @@ export async function shareAlbumLink(result: SongResult) {
   return 'copied' as const
 }
 
-export function downloadStoryPoster(result: SongResult, assets: AlbumAssets) {
+export function exportStoryPoster(result: SongResult, assets: AlbumAssets) {
   if (assets.poster) download(assets.poster, `${safeFilename(result.title)}-故事海报.png`)
 }

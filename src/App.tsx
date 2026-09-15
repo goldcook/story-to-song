@@ -3,11 +3,11 @@ import { getArrangementTracks, getSongPreviewDuration, playSongPreview, preloadA
 import { assessStorySafety, generateSong, getAlternateTitle, samples } from './lib/storyEngine'
 import {
   createShareUrl,
+  exportAlbumBundle,
+  exportStoryPoster,
   getAlbumVisual,
-  downloadStoryPoster,
   prepareAlbumAssets,
   readSharedResult,
-  shareAlbum,
   shareAlbumLink,
   type AlbumAssets,
 } from './lib/shareAlbum'
@@ -301,7 +301,7 @@ function App() {
   const [shareOpen, setShareOpen] = useState(false)
   const [linkState, setLinkState] = useState<'idle' | 'sharing' | 'shared' | 'copied' | 'failed'>('idle')
   const [shareAssets, setShareAssets] = useState<AlbumAssets | null>(null)
-  const [shareState, setShareState] = useState<'preparing' | 'ready' | 'partial' | 'sharing' | 'shared' | 'downloaded' | 'failed'>('preparing')
+  const [shareState, setShareState] = useState<'preparing' | 'ready' | 'partial' | 'exporting' | 'exported' | 'failed'>('preparing')
   const [storyExpanded, setStoryExpanded] = useState(false)
   const [careNotice, setCareNotice] = useState(false)
   const audioRef = useRef<Awaited<ReturnType<typeof playSongPreview>> | null>(null)
@@ -313,6 +313,7 @@ function App() {
   const creationProgressTimerRef = useRef<number | null>(null)
   const creationRequestRef = useRef(0)
   const sharePreparationRef = useRef(0)
+  const exportInProgressRef = useRef(false)
   const dialogTriggerRef = useRef<HTMLElement | null>(null)
   const shareDialogRef = useRef<HTMLElement | null>(null)
   const historyDialogRef = useRef<HTMLElement | null>(null)
@@ -666,23 +667,22 @@ function App() {
     URL.revokeObjectURL(url)
   }
 
-  const handleShareAlbum = async () => {
-    if (!result || shareState === 'sharing' || shareState === 'preparing') return
+  const handleExportAlbum = async () => {
+    if (!result || exportInProgressRef.current || shareState === 'exporting' || shareState === 'exported' || shareState === 'preparing') return
     if (!shareAssets || shareState === 'partial' || shareState === 'failed') {
       prepareShareStudio(result)
       return
     }
-    setShareState('sharing')
+    exportInProgressRef.current = true
+    setShareState('exporting')
     try {
-      const outcome = await shareAlbum(result, shareAssets)
-      if (outcome === 'cancelled') {
-        setShareState('ready')
-        return
-      }
-      setShareState(outcome)
+      await exportAlbumBundle(result, shareAssets)
+      setShareState('exported')
       window.setTimeout(() => setShareState('ready'), 2600)
     } catch {
       setShareState('failed')
+    } finally {
+      exportInProgressRef.current = false
     }
   }
 
@@ -702,9 +702,9 @@ function App() {
     }
   }
 
-  const handleDownloadPoster = () => {
+  const handleExportPoster = () => {
     if (!result || !shareAssets?.poster) return
-    downloadStoryPoster(result, shareAssets)
+    exportStoryPoster(result, shareAssets)
   }
 
   const prepareShareStudio = (record: SongResult) => {
@@ -1014,8 +1014,8 @@ function App() {
           </div>
 
           {!sharedView && (
-            <button className={`share-album-button state-${shareState}`} onClick={openShareStudio}>
-              <span className="share-icon"><Icon name={shareState === 'shared' || shareState === 'downloaded' ? 'check' : 'share'} size={18} /></span>
+            <button className="share-album-button" onClick={openShareStudio}>
+              <span className="share-icon"><Icon name="share" size={18} /></span>
               <span>
                 <strong>{result.replyTo ? '把这张回应唱片发回给 TA' : '发行这张私人故事唱片'}</strong>
                 <small>专属链接 · 4:5 海报 · {Math.round(previewDuration)} 秒纯音乐</small>
@@ -1213,7 +1213,7 @@ function App() {
               <div>
                 <span className="eyebrow">RELEASE YOUR RECORD</span>
                 <h2>发行这张私人唱片</h2>
-                <p>选择一种最适合你故事的分享方式。</p>
+                <p>分享可播放链接，或把作品导出留存。</p>
               </div>
               <button ref={shareCloseRef} onClick={() => setShareOpen(false)}>关闭</button>
             </div>
@@ -1228,7 +1228,7 @@ function App() {
               <button onClick={handleShareLink} disabled={linkState === 'sharing'}>
                 <span className="release-option-icon"><Icon name={linkState === 'copied' || linkState === 'shared' ? 'check' : 'share'} /></span>
                 <span>
-                  <strong>{linkState === 'copied' ? '唱片链接已复制' : linkState === 'shared' ? '已打开系统分享' : linkState === 'failed' ? '链接分享失败' : '发送可播放的唱片链接'}</strong>
+                  <strong>{linkState === 'copied' ? '唱片链接已复制' : linkState === 'shared' ? '已打开系统分享' : linkState === 'failed' ? '链接分享失败' : '分享可播放的唱片链接'}</strong>
                   <small>朋友点开即可听旋律、读故事</small>
                 </span>
                 <Icon name="arrow" size={16} />
@@ -1245,12 +1245,12 @@ function App() {
                   />
                 </label>
               )}
-              <button onClick={handleDownloadPoster} disabled={!shareAssets?.poster}>
+              <button onClick={handleExportPoster} disabled={!shareAssets?.poster}>
                 <span className="release-option-icon"><Icon name="download" /></span>
                 <span>
                   <strong>
                     {shareAssets?.poster
-                      ? '保存 4:5 故事海报'
+                      ? '导出 4:5 故事海报'
                       : shareState === 'ready' || shareState === 'failed'
                         ? '当前浏览器无法生成海报'
                         : '正在绘制故事海报…'}
@@ -1259,30 +1259,28 @@ function App() {
                 </span>
                 <Icon name="arrow" size={16} />
               </button>
-              <button onClick={handleShareAlbum} disabled={shareState === 'preparing' || shareState === 'sharing'}>
-                <span className="release-option-icon"><Icon name={shareState === 'shared' || shareState === 'downloaded' ? 'check' : 'spark'} /></span>
+              <button onClick={handleExportAlbum} disabled={shareState === 'preparing' || shareState === 'exporting' || shareState === 'exported'}>
+                <span className="release-option-icon"><Icon name={shareState === 'exported' ? 'check' : 'download'} /></span>
                 <span>
                   <strong>
                     {shareState === 'preparing'
                       ? `正在准备海报与 ${Math.round(previewDuration)} 秒音乐…`
-                      : shareState === 'sharing'
-                        ? '正在打开分享…'
-                        : shareState === 'shared'
-                          ? '专辑文件已发送'
-                          : shareState === 'downloaded'
-                            ? '专辑文件已下载'
+                      : shareState === 'exporting'
+                        ? '正在打包完整素材…'
+                        : shareState === 'exported'
+                          ? '完整素材包已下载'
                             : shareState === 'partial'
                               ? '部分文件未生成，点此重试'
                               : shareState === 'failed'
-                              ? '重新生成分享文件'
-                              : '分享封面、海报与音乐'}
+                              ? '重新生成导出文件'
+                              : '导出全部素材'}
                   </strong>
                   <small>
                     {shareState === 'preparing'
                       ? '首次导出真实乐器音轨可能需要几秒'
                       : shareState === 'partial'
-                        ? '成功的文件仍可在上方单独保存'
-                        : '包含 PNG 封面和 WAV 纯音乐'}
+                        ? '海报仍可在上方单独导出'
+                        : '单个 ZIP，含封面、海报、WAV 音乐与作品信息'}
                   </small>
                 </span>
                 <Icon name="arrow" size={16} />

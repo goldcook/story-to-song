@@ -86,6 +86,9 @@ const ARRANGEMENTS: Record<MoodId, Arrangement> = {
 function getArrangement(result: SongResult): Arrangement {
   const base = ARRANGEMENTS[result.mood.id]
   const { valence, direction, dimensions } = result.analysis
+  if (result.mood.id === 'joyful' && valence > 0.28 && dimensions.grief + dimensions.tension < 0.72) {
+    return { ...base, lead: 'pluck', pad: 'warm', percussion: 'full', ambience: 'air' }
+  }
   if (dimensions.tension > 0.54) {
     return { ...base, lead: 'pluck', pad: 'bowed', percussion: 'full', ambience: dimensions.openness > 0.38 ? 'air' : base.ambience }
   }
@@ -256,7 +259,7 @@ export function getArrangementTracks(result: SongResult): ArrangementTrack[] {
   if (arrangement.percussion !== 'none') {
     tracks.push({
       id: 'rhythm',
-      label: arrangement.percussion === 'full' ? '实录低鼓与沙锤' : '实录轻打击乐',
+      label: arrangement.percussion === 'full' ? '实录低鼓、木块与沙锤' : '实录轻打击乐',
       role: '节奏脉冲',
     })
   }
@@ -1031,7 +1034,12 @@ function scheduleComposition(
   const progressionBanks = result.mood.scale === 'minor'
     ? [[0, 5, 3, 6, 0, 5, 4, 0], [0, 3, 5, 4, 0, 6, 3, 0], [0, 6, 5, 3, 0, 4, 5, 0]]
     : [[0, 4, 5, 3, 0, 5, 3, 4], [0, 3, 4, 5, 0, 4, 3, 0], [0, 5, 3, 4, 0, 3, 5, 0]]
-  const progression = progressionBanks[seed % progressionBanks.length]
+  const joyfulProgressions = [[0, 3, 4, 4, 0, 3, 1, 4], [0, 4, 5, 3, 0, 4, 1, 4]]
+  const isJoyful = result.mood.id === 'joyful'
+    && result.analysis.valence > 0.28
+    && result.analysis.dimensions.grief + result.analysis.dimensions.tension < 0.72
+  const progressionSource = isJoyful ? joyfulProgressions : progressionBanks
+  const progression = progressionSource[seed % progressionSource.length]
   const balancedMotifs = [
     [{ at: 0, degree: 0, length: 0.68 }, { at: 0.9, degree: 2, length: 0.55 }, { at: 2.05, degree: 4, length: 0.78 }, { at: 3.2, degree: 2, length: 0.72 }],
     [{ at: 0, degree: 1, length: 0.52 }, { at: 0.72, degree: 2, length: 0.7 }, { at: 1.9, degree: 5, length: 0.62 }, { at: 2.85, degree: 4, length: 1.02 }],
@@ -1047,11 +1055,17 @@ function scheduleComposition(
     [{ at: 0, degree: 0, length: 0.58 }, { at: 0.86, degree: 1, length: 0.56 }, { at: 1.78, degree: 3, length: 0.7 }, { at: 2.9, degree: 4, length: 1.1 }],
     [{ at: 0.12, degree: 1, length: 0.62 }, { at: 1.05, degree: 2, length: 0.58 }, { at: 2.02, degree: 4, length: 0.7 }, { at: 3.08, degree: 5, length: 1.02 }],
   ]
+  const joyfulMotifs = [
+    [{ at: 0, degree: 0, length: 0.38 }, { at: 0.55, degree: 2, length: 0.32 }, { at: 1.12, degree: 4, length: 0.42 }, { at: 1.9, degree: 5, length: 0.34 }, { at: 2.48, degree: 4, length: 0.38 }, { at: 3.08, degree: 6, length: 0.62 }],
+    [{ at: 0.12, degree: 2, length: 0.34 }, { at: 0.68, degree: 4, length: 0.38 }, { at: 1.3, degree: 5, length: 0.34 }, { at: 1.92, degree: 4, length: 0.32 }, { at: 2.5, degree: 2, length: 0.36 }, { at: 3.12, degree: 4, length: 0.6 }],
+  ]
   const tenseMotifs = [
     [{ at: 0, degree: 0, length: 0.42 }, { at: 0.64, degree: 4, length: 0.44 }, { at: 1.46, degree: 1, length: 0.4 }, { at: 2.24, degree: 5, length: 0.46 }, { at: 3.18, degree: 3, length: 0.68 }],
     [{ at: 0, degree: 5, length: 0.4 }, { at: 0.72, degree: 2, length: 0.48 }, { at: 1.58, degree: 6, length: 0.42 }, { at: 2.4, degree: 1, length: 0.48 }, { at: 3.28, degree: 4, length: 0.62 }],
   ]
-  const motifTemplates = result.analysis.dimensions.tension > 0.5
+  const motifTemplates = isJoyful
+    ? joyfulMotifs
+    : result.analysis.dimensions.tension > 0.5
     ? tenseMotifs
     : result.analysis.dimensions.grief > 0.42
       ? descendingMotifs
@@ -1069,7 +1083,7 @@ function scheduleComposition(
     0,
     1,
   )
-  const introBars = bars >= 10 ? 2 : 1
+  const introBars = isJoyful ? 1 : bars >= 10 ? 2 : 1
   const liftStart = Math.max(introBars + 2, Math.floor(bars * 0.58))
   const outroIndex = bars - 1
   const introEnd = startAt + introBars * bar
@@ -1164,6 +1178,8 @@ function scheduleComposition(
       ? 0
       : isIntro
         ? 2
+        : isJoyful
+          ? 8
         : sparseness > 0.62
           ? isLift ? 4 : 2
           : isLift ? 8 : 4
@@ -1252,7 +1268,7 @@ function scheduleComposition(
         scheduleRecordedShaker(context, buses, sampleBank, noiseBuffer, barStart + beat, 0.014, false, -0.18)
         scheduleRecordedShaker(context, buses, sampleBank, noiseBuffer, barStart + beat * 3, 0.012, true, 0.18)
       }
-      if (full && isLift) {
+      if (full && (isLift || isJoyful)) {
         for (let step = 0; step < 8; step += 1) {
           scheduleRecordedShaker(
             context,

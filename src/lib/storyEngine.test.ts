@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { getArrangementTracks } from './audioEngine'
-import { assessStorySafety, generateSong } from './storyEngine'
+import { assessStorySafety, generateSong, getAlternateTitle } from './storyEngine'
 
 describe('story emotion and composition direction', () => {
   it.each([
@@ -125,6 +125,29 @@ describe('story emotion and composition direction', () => {
 
     expect(result.mood.id).toBe('joyful')
     expect(result.analysis.dimensions.joy).toBeGreaterThan(result.analysis.dimensions.grief)
+  })
+
+  it('gives clearly joyful stories a light, rhythmic arrangement', () => {
+    const result = generateSong('毕业那天，我和朋友在操场开心地大笑，终于实现了期待很久的愿望。')
+    const tracks = getArrangementTracks(result).map((track) => track.label)
+
+    expect(result.mood.id).toBe('joyful')
+    expect(result.mood.scale).toBe('major')
+    expect(result.mood.tempo).toBeGreaterThanOrEqual(108)
+    expect(tracks).toContain('实录原声吉他')
+    expect(tracks).toContain('实录低鼓、木块与沙锤')
+  })
+
+  it('keeps alternate titles tied to the story instead of generic placeholders', () => {
+    const result = generateSong('毕业那天，我和朋友在操场开心地大笑，终于实现了期待很久的愿望。')
+    const titles = [result.title]
+    for (let index = 0; index < 4; index += 1) {
+      titles.push(getAlternateTitle({ ...result, title: titles.at(-1)! }, 1))
+    }
+
+    expect(new Set(titles).size).toBe(5)
+    expect(titles.every((title) => /朋友|操场|笑|快乐|欢呼/.test(title))).toBe(true)
+    expect(titles).not.toContain('平凡的一天值得记住')
   })
 
   it('does not take ironic happiness literally after rejection', () => {

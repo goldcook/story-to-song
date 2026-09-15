@@ -445,7 +445,6 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
 .share-album-button strong { font-family: 'Noto Serif SC', serif; font-size: 12px; }
 .share-album-button small { color: var(--muted); font-size: 8px; }
 .share-icon { width: 34px; height: 34px; border-radius: 50%; background: var(--mood-color); color: white; display: grid; place-items: center; }
-.share-album-button.state-shared, .share-album-button.state-downloaded { border-color: var(--mood-color); }
 
 .result-tabs { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--line); }
 .result-tabs button { min-height: 44px; border: 0; background: transparent; padding: 12px 2px; color: #989389; font-size: 11px; cursor: pointer; position: relative; }
