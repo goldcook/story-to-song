@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "referenceBlend": 0.22,
+  "profiles": {
+    "joyful": { "density": 0.88, "syncopation": 0.70, "upwardContour": 0.76, "pitchRange": 0.72, "sustain": 0.22, "harmonicMotion": 0.68, "brightness": 0.90, "tension": 0.20, "closure": 0.96, "dynamicContrast": 0.54 },
+    "melancholy": { "density": 0.30, "syncopation": 0.20, "upwardContour": 0.26, "pitchRange": 0.46, "sustain": 0.82, "harmonicMotion": 0.38, "brightness": 0.28, "tension": 0.36, "closure": 0.52, "dynamicContrast": 0.46 },
+    "hopeful": { "density": 0.64, "syncopation": 0.44, "upwardContour": 0.78, "pitchRange": 0.66, "sustain": 0.42, "harmonicMotion": 0.54, "brightness": 0.76, "tension": 0.24, "closure": 0.92, "dynamicContrast": 0.64 },
+    "tense": { "density": 0.70, "syncopation": 0.86, "upwardContour": 0.48, "pitchRange": 0.82, "sustain": 0.24, "harmonicMotion": 0.74, "brightness": 0.60, "tension": 0.94, "closure": 0.14, "dynamicContrast": 0.86 },
+    "tender": { "density": 0.40, "syncopation": 0.28, "upwardContour": 0.54, "pitchRange": 0.42, "sustain": 0.68, "harmonicMotion": 0.34, "brightness": 0.58, "tension": 0.12, "closure": 0.86, "dynamicContrast": 0.34 },
+    "calm": { "density": 0.20, "syncopation": 0.12, "upwardContour": 0.50, "pitchRange": 0.34, "sustain": 0.94, "harmonicMotion": 0.20, "brightness": 0.48, "tension": 0.08, "closure": 0.90, "dynamicContrast": 0.20 },
+    "nostalgic": { "density": 0.48, "syncopation": 0.34, "upwardContour": 0.40, "pitchRange": 0.52, "sustain": 0.64, "harmonicMotion": 0.48, "brightness": 0.50, "tension": 0.30, "closure": 0.76, "dynamicContrast": 0.46 }
+  },
+  "rationale": {
+    "density": "Melody onsets per beat provide a relative density direction before calibration to the runtime range.",
+    "syncopation": "Off-beat vocal-note onsets provide a relative syncopation direction before calibration.",
+    "upwardContour": "Signed melodic interval direction provides a relative contour direction before calibration.",
+    "pitchRange": "Vocal range in semitones provides a relative range direction before calibration.",
+    "sustain": "Average notated vocal duration provides a relative sustain direction before calibration.",
+    "harmonicMotion": "Roman-numeral changes per measure provide a relative harmonic-activity direction before calibration.",
+    "brightness": "Median vocal register and major/minor context provide a relative brightness direction before calibration.",
+    "tension": "Altered, diminished, augmented, and secondary harmony share provides a relative tension direction before calibration.",
+    "closure": "Final tonic/dominant evidence provides a relative closure direction before calibration.",
+    "dynamicContrast": "The notated dynamic-mark range provides a relative contrast direction before calibration."
+  }
+}

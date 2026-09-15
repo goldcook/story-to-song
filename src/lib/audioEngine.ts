@@ -1,4 +1,5 @@
 import type { MoodId, SongResult } from '../types'
+import { REFERENCE_NGRAM_HASHES, REFERENCE_SHAPE_FAMILIARITY } from './generated/referenceProfiles'
 import { hasAffirmedStoryTerm } from './storyEngine'
 import {
   getStoryTasteTarget,
@@ -106,7 +107,14 @@ export interface CompositionPlan {
   reverbLowpass: number
   dynamics: Record<CompositionSection, number>
   candidateCount: number
+  eligibleCandidateCount: number
+  rejectedCandidateCount: number
+  rejectionReasons: Record<string, number>
   qualityScore: number
+  tasteFitScore: number
+  noveltyScore: number
+  structuralScore: number
+  tasteVector: MusicTasteVector
 }
 
 const ARRANGEMENT_BANKS: Record<MoodId, Arrangement[]> = {
@@ -181,7 +189,7 @@ const MOTIF_FAMILIES: Record<MoodId, MotifFamily> = {
 
 const CADENCE_BANKS: Record<MoodId, CadenceStyle[]> = {
   nostalgic: ['remembered', 'warm'],
-  joyful: ['lifted', 'ascending'],
+  joyful: ['lifted'],
   melancholy: ['unresolved', 'remembered'],
   hopeful: ['ascending', 'lifted'],
   tense: ['suspended', 'unresolved'],
@@ -421,7 +429,7 @@ function seededUnit(seed: number, index: number) {
   return (value >>> 0) / 0xffffffff
 }
 
-interface MotifNote {
+export interface MotifNote {
   at: number
   degree: number
   length: number
@@ -505,6 +513,20 @@ interface ScoredCompositionCandidate {
   textureStyle: TextureStyle
   cadence: CadenceStyle
   score: number
+  tasteFit: number
+  noveltyScore: number
+  structuralScore: number
+  vector: MusicTasteVector
+}
+
+export interface MotifQualityEvaluation {
+  hardPass: boolean
+  structuralScore: number
+  noveltyScore: number
+  referenceOverlap: number
+  shapeFamiliarity: number
+  fingerprints: string[]
+  reasons: string[]
 }
 
 const DEVELOPMENT_STYLES: DevelopmentStyle[] = ['echo', 'answer', 'expansion']
@@ -512,6 +534,305 @@ const TEXTURE_STYLES: TextureStyle[] = ['intimate', 'flowing', 'driving']
 
 function average(values: number[]) {
   return values.reduce((total, value) => total + value, 0) / Math.max(1, values.length)
+}
+
+function fingerprintHash(value: string) {
+  let hash = 0x811c9dc5
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0')
+}
+
+export function fingerprintMotif(motif: MotifNote[], scaleName: SongResult['mood']['scale']) {
+  const scale = SCALE_STEPS[scaleName]
+  return motif.slice(0, -2).map((_, start) => {
+    const window = motif.slice(start, start + 3)
+    const pitches = window.map((note) => degreeSemitone(scale, note.degree))
+    const intervals = pitches.slice(1).map((pitch, index) => clamp(pitch - pitches[index], -12, 12))
+    const gaps = window.slice(1).map((note, index) => clamp(Math.round((note.at - window[index].at) * 4), 1, 16))
+    const durations = window.map((note) => clamp(Math.round(note.length * 4), 1, 16))
+    return fingerprintHash(`${intervals.join(',')}|${gaps.join(',')}|${durations.join(',')}`)
+  })
+}
+
+function shapeBucket(value: number) {
+  const magnitude = Math.abs(value)
+  if (magnitude === 0) return 'same'
+  if (magnitude <= 2) return value > 0 ? 'up-step' : 'down-step'
+  if (magnitude <= 5) return value > 0 ? 'up-mid' : 'down-mid'
+  return value > 0 ? 'up-leap' : 'down-leap'
+}
+
+function rhythmBucket(value: number) {
+  if (value <= 2) return 'short'
+  if (value <= 4) return 'medium'
+  return 'long'
+}
+
+export function fingerprintMotifShape(motif: MotifNote[], scaleName: SongResult['mood']['scale']) {
+  const scale = SCALE_STEPS[scaleName]
+  return motif.slice(0, -2).map((_, start) => {
+    const window = motif.slice(start, start + 3)
+    const pitches = window.map((note) => degreeSemitone(scale, note.degree))
+    const intervals = pitches.slice(1).map((pitch, index) => shapeBucket(pitch - pitches[index]))
+    const gaps = window.slice(1).map((note, index) => rhythmBucket(Math.round((note.at - window[index].at) * 4)))
+    const durations = window.map((note) => rhythmBucket(Math.round(note.length * 4)))
+    return fingerprintHash(`shape|${intervals.join(',')}|${gaps.join(',')}|${durations.join(',')}`)
+  })
+}
+
+const REFERENCE_NGRAM_SET = new Set<string>(REFERENCE_NGRAM_HASHES)
+
+export function evaluateMotifQuality(
+  motif: MotifNote[],
+  scaleName: SongResult['mood']['scale'],
+  referenceHashes: ReadonlySet<string> = REFERENCE_NGRAM_SET,
+  shapeFamiliarityMap: Readonly<Record<string, number>> = REFERENCE_SHAPE_FAMILIARITY,
+): MotifQualityEvaluation {
+  const reasons: string[] = []
+  if (motif.length < 2 || motif.length > 10) reasons.push('note-count')
+  if (motif.some((note) => !Number.isFinite(note.at) || !Number.isFinite(note.degree) || !Number.isFinite(note.length))) {
+    reasons.push('non-finite-note')
+  }
+  if (motif.some((note) => note.at < 0 || note.length <= 0 || note.length > 2.5 || note.at + note.length > 5.25)) {
+    reasons.push('invalid-duration')
+  }
+  if (motif.some((note, index) => index > 0 && note.at <= motif[index - 1].at)) reasons.push('invalid-order')
+
+  const scale = SCALE_STEPS[scaleName]
+  const pitches = motif.map((note) => degreeSemitone(scale, note.degree))
+  const intervals = pitches.slice(1).map((pitch, index) => pitch - pitches[index])
+  const pitchRange = pitches.length ? Math.max(...pitches) - Math.min(...pitches) : 0
+  const excessiveLeapRatio = intervals.filter((interval) => Math.abs(interval) > 9).length / Math.max(1, intervals.length)
+  const repeatedPitchRatio = intervals.filter((interval) => interval === 0).length / Math.max(1, intervals.length)
+  if (pitchRange > 19) reasons.push('excessive-range')
+  if (excessiveLeapRatio > 0.34) reasons.push('excessive-leaps')
+  if (motif.length >= 4 && repeatedPitchRatio > 0.75) reasons.push('repeated-pitches')
+
+  const intervalSignature = intervals.map((interval) => Math.sign(interval) * Math.min(12, Math.abs(interval))).join(',')
+  const commonFragments = ['2,2,1', '2,2,2', '4,-4,4', '2,-2,2', '-2,-2,-1']
+  const clichePenalty = commonFragments.some((fragment) => intervalSignature.includes(fragment)) ? 0.18 : 0
+  const intervalVariety = new Set(intervals).size / Math.max(1, intervals.length)
+  const rhythmicShapes = motif.slice(1).map((note, index) => (
+    `${Math.round((note.at - motif[index].at) * 4)}:${Math.round(note.length * 4)}`
+  ))
+  const rhythmVariety = new Set(rhythmicShapes).size / Math.max(1, rhythmicShapes.length)
+  const averageLeap = average(intervals.map((interval) => Math.abs(interval)))
+  const structuralScore = clamp(
+    0.58 + intervalVariety * 0.2 + rhythmVariety * 0.14
+      - Math.max(0, averageLeap - 5) * 0.025
+      - repeatedPitchRatio * 0.28
+      - clichePenalty,
+    0,
+    1,
+  )
+  const fingerprints = fingerprintMotif(motif, scaleName)
+  const overlapping = fingerprints.filter((hash) => referenceHashes.has(hash)).length
+  const referenceOverlap = overlapping / Math.max(1, fingerprints.length)
+  const shapeHashes = fingerprintMotifShape(motif, scaleName)
+  const shapeFamiliarity = average(shapeHashes.map((hash) => shapeFamiliarityMap[hash] ?? 0))
+  const noveltyScore = referenceOverlap >= 0.8
+    ? 0
+    : clamp(1 - referenceOverlap * 0.7 - shapeFamiliarity * 0.45, 0, 1)
+  if (referenceOverlap >= 0.8) reasons.push('reference-overlap')
+
+  return {
+    hardPass: reasons.length === 0,
+    structuralScore,
+    noveltyScore,
+    referenceOverlap,
+    shapeFamiliarity,
+    fingerprints,
+    reasons,
+  }
+}
+
+function getEchoDirection(result: SongResult) {
+  const { joy, hope, agency, grief, nostalgia, isolation } = result.analysis.dimensions
+  return joy + hope + agency >= grief + nostalgia + isolation ? 1 : -1
+}
+
+function getLeadOctave(result: SongResult) {
+  if (result.mood.id === 'joyful') return 1
+  if (result.mood.id === 'melancholy' && result.analysis.dimensions.grief + result.analysis.dimensions.isolation > 0.72) {
+    return -1
+  }
+  return 0
+}
+
+function developMotif(motif: MotifNote[], style: DevelopmentStyle, echoDirection: number) {
+  return motif.map((note, noteIndex) => {
+    if (style === 'answer') {
+      return {
+        ...note,
+        degree: note.degree + (noteIndex % 2 === 0 ? 1 : -1),
+        at: note.at + (noteIndex === 0 ? 0.18 : 0),
+      }
+    }
+    if (style === 'expansion') {
+      return {
+        ...note,
+        degree: note.degree + Math.floor(noteIndex / 2),
+        length: note.length * (noteIndex === motif.length - 1 ? 1.34 : 0.94),
+      }
+    }
+    return {
+      ...note,
+      degree: note.degree + (noteIndex === motif.length - 1 ? echoDirection : 0),
+      at: note.at + (noteIndex === 0 ? 0.28 : 0),
+      length: note.length * (noteIndex === motif.length - 1 ? 1.12 : 1),
+    }
+  })
+}
+
+function liftMotif(motif: MotifNote[], family: MotifFamily) {
+  return motif.map((note, noteIndex) => ({
+    ...note,
+    degree: note.degree + (
+      family === 'descending' || family === 'spacious'
+        ? 0
+        : family === 'restless'
+          ? (noteIndex % 2 === 0 ? 1 : -1)
+          : noteIndex % 2 === 0 ? 2 : 1
+    ),
+    length: note.length * (noteIndex === motif.length - 1 ? 1.28 : 0.92),
+  }))
+}
+
+function turnMotif(motif: MotifNote[]) {
+  return motif
+    .filter((_, noteIndex) => noteIndex % 2 === 0)
+    .map((note, noteIndex) => ({
+      ...note,
+      at: note.at + 0.12,
+      degree: note.degree - (noteIndex === 0 ? 1 : 0),
+      length: note.length * 1.2,
+    }))
+}
+
+function getSectionMotif(
+  coreMotif: MotifNote[],
+  developedMotif: MotifNote[],
+  liftedMotif: MotifNote[],
+  shortenedMotif: MotifNote[],
+  cadence: (typeof CADENCE_MOTIFS)[CadenceStyle],
+  section: CompositionSection,
+  isCadenceBar: boolean,
+  developmentBar: number,
+) {
+  if (section === 'outro') return cadence.outro
+  if (isCadenceBar) return cadence.approach
+  if (section === 'climax') return liftedMotif
+  if (section === 'turn') return shortenedMotif
+  if (developmentBar >= 2 && developmentBar % 4 >= 2) return developedMotif
+  return coreMotif
+}
+
+interface RenderedLeadPhrase {
+  barIndex: number
+  section: CompositionSection
+  chordRoot: number
+  chordDegrees: number[]
+  motif: MotifNote[]
+}
+
+function buildRenderedLeadPhrases(
+  result: SongResult,
+  progression: number[],
+  coreMotif: MotifNote[],
+  motifFamily: MotifFamily,
+  developmentStyle: DevelopmentStyle,
+  cadenceStyle: CadenceStyle,
+  arc: CompositionSection[],
+): RenderedLeadPhrase[] {
+  const scaleLength = SCALE_STEPS[result.mood.scale].length
+  const leadDegreeOffset = getLeadOctave(result) * scaleLength
+  const introBars = arc.filter((section) => section === 'intro').length
+  const outroIndex = arc.length - 1
+  const cadence = CADENCE_MOTIFS[cadenceStyle]
+  const developed = developMotif(coreMotif, developmentStyle, getEchoDirection(result))
+  const lifted = liftMotif(coreMotif, motifFamily)
+  const shortened = turnMotif(coreMotif)
+  let previousChordDegrees: number[] | null = null
+
+  return arc.map((section, barIndex) => {
+    const chordRoot = section === 'outro' ? cadence.finalChord : progression[barIndex % progression.length]
+    const voicedTriad = voiceLeadChord(chordRoot, previousChordDegrees, scaleLength)
+    previousChordDegrees = voicedTriad
+    const chordDegrees = section === 'intro'
+      ? [voicedTriad[0], voicedTriad[2]]
+      : section === 'climax'
+        ? [...voicedTriad, voicedTriad[0] + scaleLength]
+        : voicedTriad
+    const motif = getSectionMotif(
+      coreMotif,
+      developed,
+      lifted,
+      shortened,
+      cadence,
+      section,
+      barIndex === outroIndex - 1,
+      Math.max(0, barIndex - introBars),
+    )
+
+    const fittedMotif = fitMotifToChord(motif, chordDegrees, scaleLength)
+    const audibleMotif = section === 'intro'
+      ? fittedMotif.filter((note) => note.at >= 2)
+      : fittedMotif
+
+    return {
+      barIndex,
+      section,
+      chordRoot,
+      chordDegrees,
+      motif: audibleMotif.map((note) => ({ ...note, degree: note.degree + leadDegreeOffset })),
+    }
+  })
+}
+
+function evaluateRenderedLeadPhrases(result: SongResult, phrases: RenderedLeadPhrase[]) {
+  const evaluations = phrases.map((phrase) => {
+    const evaluation = evaluateMotifQuality(phrase.motif, result.mood.scale)
+    if (phrase.section !== 'intro' || phrase.motif.length !== 1) return evaluation
+    const reasons = evaluation.reasons.filter((reason) => reason !== 'note-count')
+    return { ...evaluation, hardPass: reasons.length === 0, reasons }
+  })
+  const referenceOverlap = average(evaluations.map((evaluation) => evaluation.referenceOverlap))
+  const reasons = [...new Set(evaluations.flatMap((evaluation) => (
+    evaluation.reasons.filter((reason) => reason !== 'reference-overlap')
+  )))]
+  if (referenceOverlap >= 0.55) reasons.push('reference-overlap')
+
+  return {
+    hardPass: reasons.length === 0,
+    structuralScore: average(evaluations.map((evaluation) => evaluation.structuralScore)),
+    noveltyScore: average(evaluations.map((evaluation) => evaluation.noveltyScore)),
+    referenceOverlap,
+    fingerprintKey: evaluations.map((evaluation) => evaluation.fingerprints.join(',')).join('|'),
+    reasons,
+    phraseCount: phrases.length,
+  }
+}
+
+function evaluateCandidateMelody(
+  result: SongResult,
+  progression: number[],
+  coreMotif: MotifNote[],
+  developmentStyle: DevelopmentStyle,
+  cadenceStyle: CadenceStyle,
+) {
+  const arc = getMoodCompositionArc(result.mood.tempo, result.mood.id)
+  return evaluateRenderedLeadPhrases(result, buildRenderedLeadPhrases(
+    result,
+    progression,
+    coreMotif,
+    MOTIF_FAMILIES[result.mood.id],
+    developmentStyle,
+    cadenceStyle,
+    arc,
+  ))
 }
 
 function getTexturedDynamics(
@@ -620,17 +941,6 @@ function getCandidateVector(
   ) as unknown as MusicTasteVector
 }
 
-function getMelodicClichePenalty(motif: MotifNote[]) {
-  const intervals = motif.slice(1).map((note, index) => note.degree - motif[index].degree)
-  const fingerprint = intervals.join(',')
-  const commonFragments = ['1,1,1', '2,2,2', '2,-2,2', '1,-1,1', '-1,-1,-1']
-  const familiar = commonFragments.some((fragment) => fingerprint.includes(fragment)) ? 0.12 : 0
-  const uniqueIntervals = new Set(intervals).size / Math.max(1, intervals.length)
-  const repetitive = uniqueIntervals < 0.42 ? 0.1 : 0
-  const excessiveLeaps = intervals.filter((interval) => Math.abs(interval) > 4).length / Math.max(1, intervals.length) * 0.08
-  return familiar + repetitive + excessiveLeaps
-}
-
 function selectCompositionCandidate(
   result: SongResult,
   baseArpeggioSteps: number,
@@ -642,7 +952,9 @@ function selectCompositionCandidate(
   const arrangementBank = getArrangementBank(result)
   const cadenceBank = CADENCE_BANKS[result.mood.id]
   const target = getStoryTasteTarget(result.mood.id, result.analysis)
-  const candidates: ScoredCompositionCandidate[] = []
+  const candidates = new Map<string, ScoredCompositionCandidate>()
+  let attemptedCount = 0
+  const rejectionReasons = new Map<string, number>()
 
   arrangementBank.forEach((arrangement, arrangementIndex) => {
     progressionBank.forEach((progression, progressionIndex) => {
@@ -650,6 +962,20 @@ function selectCompositionCandidate(
         DEVELOPMENT_STYLES.forEach((developmentStyle) => {
           TEXTURE_STYLES.forEach((textureStyle) => {
             cadenceBank.forEach((cadence) => {
+              attemptedCount += 1
+              const motifQuality = evaluateCandidateMelody(
+                result,
+                progression,
+                motif,
+                developmentStyle,
+                cadence,
+              )
+              if (!motifQuality.hardPass) {
+                motifQuality.reasons.forEach((reason) => {
+                  rejectionReasons.set(reason, (rejectionReasons.get(reason) ?? 0) + 1)
+                })
+                return
+              }
               const texture = TEXTURE_PROFILES[textureStyle]
               const arpeggioSteps = clamp(baseArpeggioSteps + texture.arpeggioDelta, 2, 8)
               const reverbLowpass = clamp(baseReverbLowpass + texture.reverbLowpassDelta, 2800, 9200)
@@ -665,8 +991,16 @@ function selectCompositionCandidate(
                 reverbLowpass,
                 dynamics,
               )
-              const score = scoreTasteFit(vector, target) - getMelodicClichePenalty(motif)
-              candidates.push({
+              const tasteFit = scoreTasteFit(vector, target)
+              const score = tasteFit * 0.76
+                + motifQuality.structuralScore * 0.14
+                + motifQuality.noveltyScore * 0.1
+                - motifQuality.referenceOverlap * 0.08
+              if (score < 0.56) {
+                rejectionReasons.set('score-floor', (rejectionReasons.get('score-floor') ?? 0) + 1)
+                return
+              }
+              const candidate = {
                 arrangementIndex,
                 progressionIndex,
                 motifIndex,
@@ -674,7 +1008,22 @@ function selectCompositionCandidate(
                 textureStyle,
                 cadence,
                 score,
-              })
+                tasteFit,
+                noveltyScore: motifQuality.noveltyScore,
+                structuralScore: motifQuality.structuralScore,
+                vector,
+              }
+              const arrangementKey = [arrangement.lead, arrangement.harmony, arrangement.bass, arrangement.percussion].join(':')
+              const signature = [
+                arrangementKey,
+                progression.join(','),
+                motifQuality.fingerprintKey,
+                developmentStyle,
+                textureStyle,
+                cadence,
+              ].join('|')
+              const duplicate = candidates.get(signature)
+              if (!duplicate || candidate.score > duplicate.score) candidates.set(signature, candidate)
             })
           })
         })
@@ -682,8 +1031,18 @@ function selectCompositionCandidate(
     })
   })
 
-  candidates.sort((a, b) => b.score - a.score)
-  return { selected: candidates[0], candidateCount: candidates.length }
+  const eligible = [...candidates.values()].sort((a, b) => b.score - a.score)
+  if (!eligible.length) {
+    const summary = [...rejectionReasons.entries()].map(([reason, count]) => `${reason}:${count}`).join(', ')
+    throw new Error(`No valid composition candidate for ${result.mood.id} (${summary})`)
+  }
+  return {
+    selected: eligible[0],
+    candidateCount: attemptedCount,
+    eligibleCandidateCount: eligible.length,
+    rejectedCandidateCount: attemptedCount - eligible.length,
+    rejectionReasons: Object.fromEntries(rejectionReasons),
+  }
 }
 
 export function getCompositionArc(tempo: number, shortIntro = false): CompositionSection[] {
@@ -742,11 +1101,7 @@ export function getCompositionPlan(result: SongResult): CompositionPlan {
     tender: 4,
     calm: 2,
   }
-  const leadOctave = mood === 'joyful'
-    ? 1
-    : mood === 'melancholy' && result.analysis.dimensions.grief + result.analysis.dimensions.isolation > 0.72
-      ? -1
-      : 0
+  const leadOctave = getLeadOctave(result)
   const [baseReverbSeconds, baseReverbLevel, baseReverbLowpass] = reverb[mood]
   const progressionBank = PROGRESSION_BANKS[mood]
   const arrangementBank = getArrangementBank(result)
@@ -771,10 +1126,32 @@ export function getCompositionPlan(result: SongResult): CompositionPlan {
     reverbLowpass: clamp(baseReverbLowpass + texture.reverbLowpassDelta, 2800, 9200),
     dynamics: getTexturedDynamics(PLAN_DYNAMICS[mood], selected.textureStyle),
     candidateCount: candidateResult.candidateCount,
+    eligibleCandidateCount: candidateResult.eligibleCandidateCount,
+    rejectedCandidateCount: candidateResult.rejectedCandidateCount,
+    rejectionReasons: candidateResult.rejectionReasons,
     qualityScore: Math.round(clamp(selected.score, 0, 1) * 100),
+    tasteFitScore: Math.round(selected.tasteFit * 100),
+    noveltyScore: Math.round(selected.noveltyScore * 100),
+    structuralScore: Math.round(selected.structuralScore * 100),
+    tasteVector: selected.vector,
   }
   COMPOSITION_PLAN_CACHE.set(result, plan)
   return plan
+}
+
+export function evaluateCompositionPlanMelody(result: SongResult) {
+  const plan = getCompositionPlan(result)
+  const coreMotif = MOTIF_BANKS[plan.motifFamily][plan.motifIndex]
+  const phrases = buildRenderedLeadPhrases(
+    result,
+    plan.progression,
+    coreMotif,
+    plan.motifFamily,
+    plan.developmentStyle,
+    plan.cadence,
+    plan.arc,
+  )
+  return evaluateRenderedLeadPhrases(result, phrases)
 }
 
 function normalizedDegree(degree: number, scaleLength: number) {
@@ -1249,11 +1626,18 @@ function scheduleComposition(
   const duration = musicalDuration + RELEASE_TAIL_SECONDS
   const root = rootFrequency(result.mood.key)
   const scale = SCALE_STEPS[result.mood.scale]
-  const progression = plan.progression
   const arc = plan.arc
   const motifTemplates = MOTIF_BANKS[plan.motifFamily]
   const coreMotif = motifTemplates[plan.motifIndex]
-  const leadOctave = plan.leadOctave
+  const renderedLeadPhrases = buildRenderedLeadPhrases(
+    result,
+    plan.progression,
+    coreMotif,
+    plan.motifFamily,
+    plan.developmentStyle,
+    plan.cadence,
+    arc,
+  )
   const spaciousness = result.analysis.dimensions.openness
   const sparseness = clamp(
     result.analysis.dimensions.grief * 0.45
@@ -1262,9 +1646,6 @@ function scheduleComposition(
     0,
     1,
   )
-  const introBars = arc.filter((section) => section === 'intro').length
-  const outroIndex = bars - 1
-
   master.gain.setValueAtTime(0.0001, startAt)
   arc.forEach((section, barIndex) => {
     const targetAt = startAt + barIndex * bar + (barIndex === 0 ? Math.min(0.34, beat * 0.7) : 0.08)
@@ -1283,23 +1664,15 @@ function scheduleComposition(
     }
   }
 
-  let previousChordDegrees: number[] | null = null
   for (let barIndex = 0; barIndex < bars; barIndex += 1) {
     const barStart = startAt + barIndex * bar
-    const section = arc[barIndex]
+    const leadPhrase = renderedLeadPhrases[barIndex]
+    const section = leadPhrase.section
     const isIntro = section === 'intro'
     const isTurn = section === 'turn'
     const isClimax = section === 'climax'
     const isOutro = section === 'outro'
-    const cadence = CADENCE_MOTIFS[plan.cadence]
-    const chordRoot = isOutro ? cadence.finalChord : progression[barIndex % progression.length]
-    const voicedTriad = voiceLeadChord(chordRoot, previousChordDegrees, scale.length)
-    previousChordDegrees = voicedTriad
-    const chordDegrees = isIntro
-      ? [voicedTriad[0], voicedTriad[2]]
-      : isClimax
-        ? [...voicedTriad, voicedTriad[0] + scale.length]
-        : voicedTriad
+    const { chordRoot, chordDegrees } = leadPhrase
     const dynamics = plan.dynamics[section]
 
     chordDegrees.forEach((degree, noteIndex) => {
@@ -1406,71 +1779,20 @@ function scheduleComposition(
       }
     }
 
-    const isCadenceBar = barIndex === outroIndex - 1
-    const developmentBar = Math.max(0, barIndex - introBars)
-    const developedMotif = coreMotif.map((note, noteIndex) => {
-      if (plan.developmentStyle === 'answer') {
-        return {
-          ...note,
-          degree: note.degree + (noteIndex % 2 === 0 ? 1 : -1),
-          at: note.at + (noteIndex === 0 ? 0.18 : 0),
-        }
-      }
-      if (plan.developmentStyle === 'expansion') {
-        return {
-          ...note,
-          degree: note.degree + Math.floor(noteIndex / 2),
-          length: note.length * (noteIndex === coreMotif.length - 1 ? 1.34 : 0.94),
-        }
-      }
-      return {
-        ...note,
-        degree: note.degree + (noteIndex === coreMotif.length - 1 ? (seed % 2 === 0 ? 1 : -1) : 0),
-        at: note.at + (noteIndex === 0 ? 0.28 : 0),
-        length: note.length * (noteIndex === coreMotif.length - 1 ? 1.12 : 1),
-      }
-    })
-    const liftedMotif = coreMotif.map((note, noteIndex) => ({
-      ...note,
-      degree: note.degree + (
-        plan.motifFamily === 'descending' || plan.motifFamily === 'spacious'
-          ? 0
-          : plan.motifFamily === 'restless'
-            ? (noteIndex % 2 === 0 ? 1 : -1)
-            : noteIndex % 2 === 0 ? 2 : 1
-      ),
-      length: note.length * (noteIndex === coreMotif.length - 1 ? 1.28 : 0.92),
-    }))
-    const turnMotif = coreMotif
-      .filter((_, noteIndex) => noteIndex % 2 === 0)
-      .map((note, noteIndex) => ({ ...note, at: note.at + 0.12, degree: note.degree - (noteIndex === 0 ? 1 : 0), length: note.length * 1.2 }))
-    const motif = isOutro
-      ? cadence.outro
-      : isCadenceBar
-        ? cadence.approach
-        : isClimax
-          ? liftedMotif
-          : isTurn
-            ? turnMotif
-          : developmentBar >= 2 && developmentBar % 4 >= 2
-            ? developedMotif
-            : coreMotif
-    const harmonizedMotif = fitMotifToChord(motif, chordDegrees, scale.length)
+    const harmonizedMotif = leadPhrase.motif
 
     harmonizedMotif.forEach((note, noteIndex) => {
-      if (isIntro && note.at < 2) return
       const timing = isOutro ? 0 : (seededUnit(seed, barIndex * 43 + noteIndex) - 0.5) * 0.042
       const noteStart = Math.max(barStart, barStart + note.at * beat + timing)
       const velocity = 0.91 + seededUnit(seed ^ 0x71c3, barIndex * 47 + noteIndex) * 0.17
-      const octave = leadOctave + (isClimax && noteIndex === 2 && plan.lead !== 'guitar' && result.analysis.valence >= -0.1 ? 1 : 0)
-      const frequency = noteFrequency(root, degreeSemitone(scale, note.degree), octave)
+      const frequency = noteFrequency(root, degreeSemitone(scale, note.degree))
       const pan = noteIndex % 2 ? 0.1 : -0.1
       const leadVolume = (plan.lead === 'piano' ? 0.048 : plan.lead === 'guitar' ? 0.044 : 0.036)
         * dynamics * velocity
       scheduleLead(frequency, noteStart, beat * note.length, leadVolume, pan)
 
       if (isClimax && (noteIndex === 0 || noteIndex === 2)) {
-        const harmonyFrequency = noteFrequency(root, degreeSemitone(scale, note.degree - 2), octave)
+        const harmonyFrequency = noteFrequency(root, degreeSemitone(scale, note.degree - 2))
         if (plan.lead === 'guitar') {
           scheduleAcousticPiano(context, buses, sampleBank, harmonyFrequency, noteStart + 0.018, beat * note.length * 0.92, 0.014 * dynamics, -pan * 1.7)
         } else {

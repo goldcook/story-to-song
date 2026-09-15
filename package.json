@@ -7,6 +7,9 @@
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "research:music": "node scripts/analyze-reference-scores.mjs",
+    "research:check": "node scripts/analyze-reference-scores.mjs --check",
+    "research:verify": "node scripts/analyze-reference-scores.mjs --generated-check",
     "test": "vitest run",
     "preview": "vite preview --host 0.0.0.0"
   },

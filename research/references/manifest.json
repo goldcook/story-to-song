@@ -1,0 +1,191 @@
+{
+  "schemaVersion": 1,
+  "corpus": {
+    "name": "OpenScore Lieder Corpus",
+    "release": "v3.0.0",
+    "commit": "f44e962a1ff85ddcc2f6f42bed3b0c529555ee15",
+    "doi": "10.5281/zenodo.15450143",
+    "license": "CC0-1.0",
+    "licenseUrl": "https://github.com/OpenScore/Lieder/blob/f44e962a1ff85ddcc2f6f42bed3b0c529555ee15/LICENSE.txt",
+    "licensePath": "LICENSE.txt",
+    "licenseSha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499",
+    "sourceBaseUrl": "https://raw.githubusercontent.com/OpenScore/Lieder/f44e962a1ff85ddcc2f6f42bed3b0c529555ee15/",
+    "retrievedAt": "2026-09-16"
+  },
+  "selectionPolicy": {
+    "worksPerEmotion": 2,
+    "composerDeathCutoff": 1955,
+    "usesLyrics": false,
+    "notes": "Editorial emotion labels use titles and score-level musical character. Only note events and automatic Roman-numeral analyses are processed."
+  },
+  "works": [
+    {
+      "emotion": "joyful",
+      "scoreId": "6212179",
+      "title": "The Year’s at the Spring",
+      "composer": "Amy Beach",
+      "composerDied": 1944,
+      "scorePath": "scores/Beach,_Amy/3_Browning_Songs,_Op.44/1_The_Year’s_at_the_Spring/lc6212179.mscx",
+      "scoreSha256": "449d0d96db0fc98ae875c0fe2c827231118faf89d12b49b8fe07e190b94b12f3",
+      "analysisPath": "scores/Beach,_Amy/3_Browning_Songs,_Op.44/1_The_Year’s_at_the_Spring/analysis_automatic.rntxt",
+      "analysisSha256": "41bc4ed7cd7d0da39f8a3d9565a78d4e5c7a113d51afa90e4c4995358ef02726",
+      "selectionBasis": "spring celebration and brisk major-mode motion"
+    },
+    {
+      "emotion": "joyful",
+      "scoreId": "6649005",
+      "title": "O the merry, merry Spring!",
+      "composer": "Ann Mounsey",
+      "composerDied": 1891,
+      "scorePath": "scores/Mounsey_Bartholomew,_Ann/Songs_of_Remembrance/5_O_the_merry,_merry_Spring!/lc6649005.mscx",
+      "scoreSha256": "2e61225b7c90f2fe61a4bb0745ff54419ef02e509c3f269dddc1c05d8f698402",
+      "analysisPath": "scores/Mounsey_Bartholomew,_Ann/Songs_of_Remembrance/5_O_the_merry,_merry_Spring!/analysis_automatic.rntxt",
+      "analysisSha256": "c418d6fd6c78907daccc2a0253b92b4b1b2479a1972857636e158a318320e598",
+      "selectionBasis": "explicitly merry spring character"
+    },
+    {
+      "emotion": "hopeful",
+      "scoreId": "6505088",
+      "title": "Hope",
+      "composer": "Alexander Mackenzie",
+      "composerDied": 1935,
+      "scorePath": "scores/Mackenzie,_Alexander/Spring_Songs,_Op.44/2_Hope/lc6505088.mscx",
+      "scoreSha256": "0e13d3d643249c865506d03ac3a5740d6958d55765f97b0317977ab352c06dc3",
+      "analysisPath": "scores/Mackenzie,_Alexander/Spring_Songs,_Op.44/2_Hope/analysis_automatic.rntxt",
+      "analysisSha256": "c93e80293576eb38f1632b3b66b2b14b2c6934d92ea9abe2eb53ef2c3dd2fde5",
+      "selectionBasis": "explicit hope theme and forward harmonic motion"
+    },
+    {
+      "emotion": "hopeful",
+      "scoreId": "6484163",
+      "title": "Past and Future",
+      "composer": "Frederic Hymen Cowen",
+      "composerDied": 1935,
+      "scorePath": "scores/Cowen,_Frederic_Hymen/_/Past_and_Future/lc6484163.mscx",
+      "scoreSha256": "73df8a2e17dfba2b112d8523712bf43996e233cc6c5438eec7d80077117ff93b",
+      "analysisPath": "scores/Cowen,_Frederic_Hymen/_/Past_and_Future/analysis_automatic.rntxt",
+      "analysisSha256": "a929992ffa85feebf854920e34b1e61afd87feb9af700d13b745542cc7ac24ce",
+      "selectionBasis": "movement from reflection toward the future"
+    },
+    {
+      "emotion": "tender",
+      "scoreId": "6212196",
+      "title": "I Send My Heart up to Thee!",
+      "composer": "Amy Beach",
+      "composerDied": 1944,
+      "scorePath": "scores/Beach,_Amy/3_Browning_Songs,_Op.44/3_I_Send_My_Heart_up_to_Thee!/lc6212196.mscx",
+      "scoreSha256": "0dbca6fab5abf3c57360706657eb1a428ea4387e58d7c3fb5705bd5871d5558d",
+      "analysisPath": "scores/Beach,_Amy/3_Browning_Songs,_Op.44/3_I_Send_My_Heart_up_to_Thee!/analysis_automatic.rntxt",
+      "analysisSha256": "0b58b92ee31b011faca70e8d60b54c5ccf874c4e5ca2f85306542dbbfe903b3c",
+      "selectionBasis": "intimate affectionate song character"
+    },
+    {
+      "emotion": "tender",
+      "scoreId": "6230258",
+      "title": "So White, so Soft, so Sweet is She",
+      "composer": "Frederick Delius",
+      "composerDied": 1934,
+      "scorePath": "scores/Delius,_Frederick/4_Old_English_Lyrics/2_So_White,_so_Soft,_so_Sweet_is_She/lc6230258.mscx",
+      "scoreSha256": "4a4922afaeb5e0393e4e2ac1ab0e429a456a1ef65afe1a9713cdb18aba512839",
+      "analysisPath": "scores/Delius,_Frederick/4_Old_English_Lyrics/2_So_White,_so_Soft,_so_Sweet_is_She/analysis_automatic.rntxt",
+      "analysisSha256": "828c35f8555c981912493312f729d839e2e571305f5227033e0defc363f63ca7",
+      "selectionBasis": "soft lyrical intimacy"
+    },
+    {
+      "emotion": "calm",
+      "scoreId": "6564816",
+      "title": "Fairy Lullaby",
+      "composer": "Amy Beach",
+      "composerDied": 1944,
+      "scorePath": "scores/Beach,_Amy/3_Shakespeare_Songs,_Op.37/3_Fairy_Lullaby/lc6564816.mscx",
+      "scoreSha256": "89f06ff03176651b57a1ee73326b1bf3e026134c98fc839b91963e4e91b2fc2e",
+      "analysisPath": "scores/Beach,_Amy/3_Shakespeare_Songs,_Op.37/3_Fairy_Lullaby/analysis_automatic.rntxt",
+      "analysisSha256": "5920fe00d95d0b153bce7d21336d594822523e357edee9e71f7c6a7b993a5fb5",
+      "selectionBasis": "lullaby pacing and sustained phrasing"
+    },
+    {
+      "emotion": "calm",
+      "scoreId": "6491353",
+      "title": "Das Liedchen von der Ruhe",
+      "composer": "Ludwig van Beethoven",
+      "composerDied": 1827,
+      "scorePath": "scores/Beethoven,_Ludwig_van/8_Lieder,_Op.52/3_Das_Liedchen_von_der_Ruhe/lc6491353.mscx",
+      "scoreSha256": "38216e4e101594fee9558d933690812992e6acc21a8ae0d92d5141eef9c4be63",
+      "analysisPath": "scores/Beethoven,_Ludwig_van/8_Lieder,_Op.52/3_Das_Liedchen_von_der_Ruhe/analysis_automatic.rntxt",
+      "analysisSha256": "212de427c5582c1785ce771da27d05391decbcd44aa72b55eef7d62461aafdce",
+      "selectionBasis": "explicit rest and repose character"
+    },
+    {
+      "emotion": "nostalgic",
+      "scoreId": "6486038",
+      "title": "Home, Sweet Home",
+      "composer": "Henry Bishop",
+      "composerDied": 1855,
+      "scorePath": "scores/Bishop,_Henry/_/Home,_Sweet_Home/lc6486038.mscx",
+      "scoreSha256": "faa9f7ddaac3c16445aea3ccaeb9140f2357999c1334fad42b8ec8f4115c2640",
+      "analysisPath": "scores/Bishop,_Henry/_/Home,_Sweet_Home/analysis_automatic.rntxt",
+      "analysisSha256": "cc221676ee690c7eb35d4cc08ee2a2b0eb101486c218de7f0249808f5e7981d3",
+      "selectionBasis": "home-memory association and returning phrases"
+    },
+    {
+      "emotion": "nostalgic",
+      "scoreId": "6202530",
+      "title": "A Memory",
+      "composer": "Maude Valerie White",
+      "composerDied": 1937,
+      "scorePath": "scores/White,_Maude_Valérie/3_Little_Songs/2_A_Memory/lc6202530.mscx",
+      "scoreSha256": "0b417559cefb52ef2ae908431bd128a1d039b1e4f30ae49d978fd673a81ed576",
+      "analysisPath": "scores/White,_Maude_Valérie/3_Little_Songs/2_A_Memory/analysis_automatic.rntxt",
+      "analysisSha256": "ca5cb94f0c50d9af9cf1efbcb671a691f7d11f37d2dc77ea548b123a759405a9",
+      "selectionBasis": "explicit memory theme and reflective pacing"
+    },
+    {
+      "emotion": "melancholy",
+      "scoreId": "6189644",
+      "title": "When I am dead, my dearest",
+      "composer": "Samuel Coleridge-Taylor",
+      "composerDied": 1912,
+      "scorePath": "scores/Coleridge-Taylor,_Samuel/6_Sorrow_Songs,_Op.57/2_When_I_am_dead,_my_dearest/lc6189644.mscx",
+      "scoreSha256": "2199304628892deb6466a360c74da5b22f66f0bcd9420c2a23f02db614ce14e4",
+      "analysisPath": "scores/Coleridge-Taylor,_Samuel/6_Sorrow_Songs,_Op.57/2_When_I_am_dead,_my_dearest/analysis_automatic.rntxt",
+      "analysisSha256": "53d24138ea5c9cfd31d1799d45bb4cdef2a7fbc4162704d2fc7e0b75188e6738",
+      "selectionBasis": "explicit sorrow and loss theme"
+    },
+    {
+      "emotion": "melancholy",
+      "scoreId": "6447342",
+      "title": "A Sad Song",
+      "composer": "Peter Warlock",
+      "composerDied": 1930,
+      "scorePath": "scores/Warlock,_Peter/Peterisms,_Set_1/2_A_Sad_Song/lc6447342.mscx",
+      "scoreSha256": "5eeea06c731bb56967bf31904d60fa021b6ca1ee13de7156187d87cee11bb160",
+      "analysisPath": "scores/Warlock,_Peter/Peterisms,_Set_1/2_A_Sad_Song/analysis_automatic.rntxt",
+      "analysisSha256": "d452fb26a69055154d3b1743614d76818500e4a05722977629cccaa6f3ea8ce7",
+      "selectionBasis": "explicitly sad miniature"
+    },
+    {
+      "emotion": "tense",
+      "scoreId": "6573780",
+      "title": "Der Erlkönig",
+      "composer": "Emilie Mayer",
+      "composerDied": 1883,
+      "scorePath": "scores/Mayer,_Emilie/_/Der_Erlkönig/lc6573780.mscx",
+      "scoreSha256": "ede1ccca426138ee1914d5ec82faa44662418772a98df8468f5d933787f3cc65",
+      "analysisPath": "scores/Mayer,_Emilie/_/Der_Erlkönig/analysis_automatic.rntxt",
+      "analysisSha256": "90217a78aac81ed082b5c24358f5425024c599a00c15a716ad89c13a96c4cade",
+      "selectionBasis": "urgent supernatural chase narrative"
+    },
+    {
+      "emotion": "tense",
+      "scoreId": "6569855",
+      "title": "Reiterlied",
+      "composer": "Clara Mathilda Faisst",
+      "composerDied": 1948,
+      "scorePath": "scores/Faisst,_Clara_Mathilda/2_Kriegslieder/2_Reiterlied/lc6569855.mscx",
+      "scoreSha256": "3d99de18f58969baf8256ebdd0e32b36589f39435cdb926d8293cc7a313e2600",
+      "analysisPath": "scores/Faisst,_Clara_Mathilda/2_Kriegslieder/2_Reiterlied/analysis_automatic.rntxt",
+      "analysisSha256": "2e030b5ff1d6d1124f55a7e04e78d4fb74e01b8e28a11894326abf894bce9894",
+      "selectionBasis": "war-song urgency and forceful rhythmic profile"
+    }
+  ]
+}

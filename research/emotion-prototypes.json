@@ -1,0 +1,153 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Canonical, non-sensitive stories for deterministic cross-emotion regression and listening review.",
+  "prototypes": [
+    {
+      "id": "sunlit-celebration",
+      "variant": "canonical",
+      "mood": "joyful",
+      "story": "今天收到录取通知，我和朋友冲到操场欢呼大笑，阳光特别亮，所有努力终于有了结果。",
+      "listeningCriteria": "明亮、轻快、短音密度高，收尾有明确的庆祝感。"
+    },
+    {
+      "id": "quiet-good-news",
+      "variant": "low-arousal",
+      "mood": "joyful",
+      "story": "午后我安静地拆开好消息，心里又开心又快乐，坐在窗边也忍不住微笑。",
+      "listeningCriteria": "保持明亮的大调方向，但比庆祝场景更轻、更克制。"
+    },
+    {
+      "id": "nervous-award-release",
+      "variant": "mixed",
+      "mood": "joyful",
+      "story": "上台前我一直紧张，宣布获奖后大家突然欢呼大笑，我兴奋得跳起来庆祝胜利。",
+      "listeningCriteria": "可以保留短暂紧张，但最终必须明显转为快速、明亮的释放。"
+    },
+    {
+      "id": "rain-platform-farewell",
+      "variant": "canonical",
+      "mood": "melancholy",
+      "story": "我们在雨里的站台告别，从那以后再也没有见过，没说完的话一直留在心里。",
+      "listeningCriteria": "低速、下行、留白较多，结尾保留没有说完的感觉。"
+    },
+    {
+      "id": "quiet-message-grief",
+      "variant": "low-arousal",
+      "mood": "melancholy",
+      "story": "夜深后我想念已经离开的朋友，独自看着旧消息，心里一直很难过。",
+      "listeningCriteria": "低动态与长音为主，悲伤明确但不做戏剧化爆发。"
+    },
+    {
+      "id": "anger-after-breakup",
+      "variant": "mixed",
+      "mood": "melancholy",
+      "story": "争吵带来的愤怒慢慢退去，他已经离开，我们从此分手，最后只剩心碎和失去。",
+      "listeningCriteria": "开头可有紧张残影，主体应落到失去后的下行与未完成感。"
+    },
+    {
+      "id": "new-city-restart",
+      "variant": "canonical",
+      "mood": "hopeful",
+      "story": "熬过最难的日子后，我收拾好行李去新的城市，终于相信生活会重新亮起来。",
+      "listeningCriteria": "从克制逐步抬升，后半段展开，结尾有继续前行的方向。"
+    },
+    {
+      "id": "slow-recovery",
+      "variant": "low-arousal",
+      "mood": "hopeful",
+      "story": "病后我开始认真吃饭，慢慢照顾自己，也重新相信明天会一点点好起来。",
+      "listeningCriteria": "希望感应来自缓慢恢复而非欢庆，保留柔和但持续上行。"
+    },
+    {
+      "id": "afraid-new-departure",
+      "variant": "mixed",
+      "mood": "hopeful",
+      "story": "我仍然害怕陌生城市，但决定重新出发，终于开始期待下一站和新的生活。",
+      "listeningCriteria": "容纳不安底色，后半段由行动感推动并获得清楚方向。"
+    },
+    {
+      "id": "approaching-conflict",
+      "variant": "canonical",
+      "mood": "tense",
+      "story": "门外的争吵越来越近，我握紧手机，害怕得心跳很快，脚步声突然停在门口。",
+      "listeningCriteria": "脉冲不稳定、动态反差大，低音和结尾保持悬念。"
+    },
+    {
+      "id": "waiting-for-result",
+      "variant": "low-arousal",
+      "mood": "tense",
+      "story": "面试结果迟迟没来，我一直担心又不安，反复查看手机，怎么也无法安心。",
+      "listeningCriteria": "不必猛烈，但要有持续的不稳定脉冲和无法落地的终止。"
+    },
+    {
+      "id": "comfort-under-alarm",
+      "variant": "mixed",
+      "mood": "tense",
+      "story": "警报声突然响起，冲突越来越近，我感到恐惧、紧张、害怕，心跳快得停不下来，朋友只能握着我的手。",
+      "listeningCriteria": "温柔音色不能消解危险感，节奏与悬置和声应占主导。"
+    },
+    {
+      "id": "late-night-soup",
+      "variant": "canonical",
+      "mood": "tender",
+      "story": "妈妈在我加班回家时留了一盏灯，桌上还有一碗热汤，她轻轻陪着我，什么也没问。",
+      "listeningCriteria": "近距离、柔和、少打击乐，旋律与回应声部像一次安静陪伴。"
+    },
+    {
+      "id": "bedtime-embrace",
+      "variant": "low-arousal",
+      "mood": "tender",
+      "story": "孩子睡着前我轻轻拥抱他，替他盖好被子说晚安，然后安静地守在床边。",
+      "listeningCriteria": "极低动态但仍以陪伴感为中心，不能退化成空泛环境音乐。"
+    },
+    {
+      "id": "tearful-thanks",
+      "variant": "mixed",
+      "mood": "tender",
+      "story": "我紧张得手心冒汗，妈妈紧紧拥抱我，轻轻说会一直陪着我，我终于安心下来。",
+      "listeningCriteria": "允许开头有紧张底色，但主要听感应亲密、温暖并逐渐安定。"
+    },
+    {
+      "id": "quiet-window",
+      "variant": "canonical",
+      "mood": "calm",
+      "story": "清晨我坐在窗边安静地喝咖啡，看风慢慢吹动树叶，整个房间都很平静。",
+      "listeningCriteria": "低密度、长呼吸、音域克制，不能出现明显催促感。"
+    },
+    {
+      "id": "riverside-after-rain",
+      "variant": "low-arousal",
+      "mood": "calm",
+      "story": "雨停后我沿着河边慢慢散步，听见风吹过树叶，心里终于安静下来。",
+      "listeningCriteria": "保持留白和自然呼吸，以平稳而非悲伤的方式慢下来。"
+    },
+    {
+      "id": "rest-after-pressure",
+      "variant": "mixed",
+      "mood": "calm",
+      "story": "忙完紧张的一天，我放下手机，做了几次深呼吸，终于安心地睡着了。",
+      "listeningCriteria": "开头可保留少量余压，但整体应快速进入稳定、低张力状态。"
+    },
+    {
+      "id": "grandmother-summer-memory",
+      "variant": "canonical",
+      "mood": "nostalgic",
+      "story": "翻到旧照片，我又想起小时候和外婆在院子里乘凉的夏夜，那把蒲扇仿佛还在轻轻摇。",
+      "listeningCriteria": "温暖但略带回望，木质音色与弓弦余韵并存，不等同于纯粹悲伤。"
+    },
+    {
+      "id": "return-to-old-school",
+      "variant": "low-arousal",
+      "mood": "nostalgic",
+      "story": "多年以后回到老家，我看见小时候的教室和操场，想起曾经一起大笑的朋友。",
+      "listeningCriteria": "回忆中带亮色，保持回望质感但不能误成纯快乐。"
+    },
+    {
+      "id": "bittersweet-family-album",
+      "variant": "mixed",
+      "mood": "nostalgic",
+      "story": "整理旧照片时想起爷爷和从前的夏夜，我怀念院子里的蒲扇，也有一点遗憾。",
+      "listeningCriteria": "怀念是主色，允许轻微悲伤，但不应落入失去式的沉重终止。"
+    }
+  ]
+}
