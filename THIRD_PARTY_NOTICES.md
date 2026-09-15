@@ -2,7 +2,7 @@
 
 ## tonejs-instruments samples
 
-The piano, acoustic-guitar, cello, and xylophone MP3 samples under
+The piano, acoustic-guitar, cello, clarinet, and xylophone MP3 samples under
 `public/audio/instruments/` come from the
 [tonejs-instruments](https://github.com/nbrosowsky/tonejs-instruments) sample
 library by Nicholaus P. Brosowsky, pinned to upstream commit
@@ -20,7 +20,7 @@ guitar), and Freesound user `flcellogrl`, recording `12408__flcellogrl__real-cel
 
 ## Versilian Community Sample Library
 
-The kick, shaker, and woodblock WAV samples under `public/audio/percussion/`
+The frame-drum, kick, shaker, and woodblock WAV samples under `public/audio/percussion/`
 come from the [Versilian Community Sample Library](https://github.com/sgossner/VCSL)
 at commit `c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e`.
 

@@ -373,14 +373,15 @@ const NEGATION_PATTERN = /并没有|并不|不是|不再|从未|从没|没有|�
 const ADVERSE_EVENT_PATTERN = /失望|被拒绝|被否定|被否掉|落选|失败|被辞退|被解雇|落空/
 const IRONY_PATTERN = /可真|真是太|呵呵|真够|太好了/
 const PAST_RECOVERY_PATTERN = /(曾经|以前|那时|那时候|过去|去年|几年前|一度).{0,24}(不想活|想死|自杀).{0,36}(现在|后来|如今).{0,16}(安全|活下来|走出来|好起来|不再)/
-const CRISIS_EXPRESSION_PATTERN = /不想继续活(?:着|下去)?|不想活(?:了|下去)?|想去死|想死(?:了)?|想自杀|活不下去|不如死|一了百了|结束自己|结束生命|活着.{0,5}(?:没意思|没有意义)/
-const CRISIS_METHOD_PATTERN = /(?:想|要|准备|准备好|打算|计划|决定|会|就).{0,10}(?:去死|自杀|结束自己|结束生命|从.{0,5}跳下去|跳楼|割腕|吞药|喝药|上吊)/
-const CRISIS_FAREWELL_PATTERN = /最后一天.{0,16}(?:告别所有人|跟所有人告别|遗言)/
+const CRISIS_EXPRESSION_PATTERN = /不想(?:继续|再)?活(?:着|了|下去)?|想去死|想死(?:了)?|想自杀|活不下去|再也撑不下去|真的撑不下去|不如死|一了百了|结束自己|结束生命|活着.{0,5}(?:没意思|没有意义)/
+const CRISIS_METHOD_PATTERN = /(?:想|要|准备|准备好|打算|计划|决定|会|就|今晚|马上).{0,12}(?:去死|自杀|结束自己|结束生命|离开这个世界|从.{0,5}跳下去|跳楼|割腕|吞药|喝药|服药|上吊|把(?:安眠药|药).{0,4}(?:全)?(?:吃|吞|喝)(?:了|下去)?)/
+const CRISIS_FAREWELL_PATTERN = /(?:最后一天.{0,16}(?:告别所有人|跟所有人告别|遗言))|(?:写好|留下|这是我的).{0,6}(?:遗书|遗言)|(?:遗书|遗言).{0,10}(?:写好|告别)/
 const CRISIS_PROTECTIVE_PATTERN = /(?:我)?(?:决定|计划|已经|现在)?(?:不再|不会|不想|不愿意|不)(?:去死|死|自杀|结束自己|结束生命|跳楼|割腕|吞药|喝药|上吊)|(?:阻止|劝阻|救下|拦住).{0,8}(?:自杀|跳楼|割腕|吞药)/g
+const CRISIS_REPORTER_PATTERN = /(?:朋友|同学|家人|他|她|有人|新闻|小说|电影|角色|患者|医生).{0,14}(?:跟我说|对我说|发消息说|说|写着|写道|问我)\s*$/
 const CRISIS_CURRENT_MARKERS = ['现在', '此刻', '马上', '今天', '今晚']
 const CRISIS_PAST_MARKERS = ['曾经', '以前', '过去', '那时', '去年', '几年前', '一度']
 const CRISIS_THIRD_PARTY_MARKERS = ['他', '她', '有人', '新闻', '小说', '电影', '角色', '患者']
-const TRAUMA_PATTERN = /被侵犯|性侵|强奸|猥亵|家暴|殴打|虐待|长期被打|暴力伤害|被骚扰/
+const TRAUMA_PATTERN = /被侵犯|性侵|性骚扰|强奸|猥亵|家暴|家庭暴力|校园霸凌|职场霸凌|遭遇.{0,4}霸凌|殴打|虐待|长期被打|被.{0,8}(?:打了多年|打了十年|掐住脖子|掐脖子)|遭受.{0,8}暴力|暴力伤害|被骚扰/
 const INTENSIFIER_PATTERN = /非常|特别|真的|实在|太|极其|无比|越来越|很$/
 const DOWNTONER_PATTERN = /有点|一点|稍微|偶尔$/
 const PRE_CONTRAST_PATTERN = /^(虽然|尽管|即使)/
@@ -533,7 +534,33 @@ function lastMarkerIndex(text: string, markers: string[]) {
   return Math.max(...markers.map((marker) => text.lastIndexOf(marker)))
 }
 
+function isReportedCrisisExpression(text: string, index: number) {
+  const before = text.slice(0, index)
+  const after = text.slice(index)
+  const quotePairs: Array<[string, string]> = [['“', '”'], ['‘', '’'], ['"', '"'], ["'", "'"]]
+  const insideReportedQuote = quotePairs.some(([open, close]) => {
+    const openIndex = before.lastIndexOf(open)
+    if (openIndex < 0 || after.indexOf(close) < 0) return false
+    return CRISIS_REPORTER_PATTERN.test(before.slice(Math.max(0, openIndex - 36), openIndex))
+  })
+  if (insideReportedQuote) return true
+
+  const colonIndex = Math.max(before.lastIndexOf('：'), before.lastIndexOf(':'))
+  if (colonIndex >= 0) {
+    const boundaryIndex = Math.max(
+      before.lastIndexOf('。', colonIndex),
+      before.lastIndexOf('！', colonIndex),
+      before.lastIndexOf('？', colonIndex),
+      before.lastIndexOf('\n', colonIndex),
+    )
+    if (CRISIS_REPORTER_PATTERN.test(before.slice(boundaryIndex + 1, colonIndex))) return true
+  }
+
+  return /(?:医生|护士|咨询师|心理师).{0,12}(?:问我|询问我).{0,8}(?:是不是|是否|有没有)$/.test(before.slice(-40))
+}
+
 function isCurrentFirstPersonExpression(text: string, index: number, length: number) {
+  if (isReportedCrisisExpression(text, index)) return false
   const before = text.slice(Math.max(0, index - 36), index)
   const around = text.slice(Math.max(0, index - 24), Math.min(text.length, index + length + 18))
   const selfIndex = Math.max(before.lastIndexOf('我'), before.lastIndexOf('自己'))
@@ -1028,6 +1055,9 @@ function getSecondaryMood(
 
 export function generateSong(story: string, options: GenerateSongOptions = {}): SongResult {
   const normalizedStory = story.trim().replace(/\s+/g, ' ')
+  if (assessStorySafety(normalizedStory) === 'crisis') {
+    throw new Error('Crisis stories cannot be converted into songs')
+  }
   const seed = hashStory(normalizedStory)
   const emotionResult = analyzeStoryEmotion(normalizedStory)
   const moodDefinition = options.moodId ? MOODS[options.moodId] : emotionResult.ranked[0].mood

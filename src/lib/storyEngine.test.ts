@@ -224,6 +224,16 @@ describe('story emotion and composition direction', () => {
     '我不是不想死。',
     '我已经买好了药，不想继续活着。',
     '今天就是最后一天了，我想跟所有人告别。',
+    '我不想再活下去了。',
+    '我真的撑不下去了，今晚把安眠药全吃了。',
+    '我已经写好遗书了。',
+    '这是我的遗言，跟大家告别。',
+    '我决定离开这个世界。',
+    '朋友跟我说别放弃，但我想死。',
+    '朋友对我说会陪我，可我想死。',
+    '家人说会帮我，我真的不想活了。',
+    '医生问我最近怎么样，我想死。',
+    '她说我应该振作，但我不想再活下去了。',
   ])('intercepts common immediate crisis phrasing in “%s”', (story) => {
     expect(assessStorySafety(story)).toBe('crisis')
   })
@@ -235,6 +245,13 @@ describe('story emotion and composition direction', () => {
     '我决定不再自杀。',
     '我已经阻止他自杀。',
     '以前我想死，但那已经是过去的事了。',
+    '朋友跟我说：我想死。',
+    '她发消息说“我不想活了”，我马上去陪她。',
+    '小说里写着：我想结束生命。',
+    '医生问我是不是想死，我说不是。',
+    '我的孩子离开这个世界已经一年了。',
+    '好友离开这个世界那天，下着很大的雨。',
+    '这首歌写给已经离开这个世界的奶奶。',
   ])('does not intercept third-person, quoted or protective phrasing in “%s”', (story) => {
     expect(assessStorySafety(story)).toBe('standard')
   })
@@ -264,6 +281,25 @@ describe('story emotion and composition direction', () => {
     expect(result.theme).toBe('关于一段不容易说出的经历')
     expect(result.excerpt).toBe('这是一段不容易说出口的经历。')
     expect(['未命名的那一页', '留在这里的一段话', '这一页没有名字']).toContain(result.title)
+  })
+
+  it.each([
+    '我遭受了很多年的家庭暴力。',
+    '小时候我被父亲打了十年。',
+    '那次被性骚扰的经历。',
+    '我遭遇过校园霸凌。',
+    '我曾被伴侣掐住脖子。',
+  ])('uses protective packaging for trauma phrasing in “%s”', (story) => {
+    const result = generateSong(story)
+
+    expect(result.analysis.sensitivity).toBe('sensitive')
+    expect(result.theme).toBe('关于一段不容易说出的经历')
+    expect(result.excerpt).toBe('这是一段不容易说出口的经历。')
+    expect(['未命名的那一页', '留在这里的一段话', '这一页没有名字']).toContain(result.title)
+  })
+
+  it('enforces crisis blocking at the generation boundary', () => {
+    expect(() => generateSong('我决定离开这个世界。')).toThrow('Crisis stories cannot be converted into songs')
   })
 
   it('keeps displayed celestial and restrained rhythm tracks consistent with the score', () => {

@@ -21,6 +21,29 @@ export interface AlbumAssets {
 const assetCache = new Map<string, Promise<AlbumAssets>>()
 const MAX_ASSET_CACHE_SIZE = 3
 
+const AUDIO_SAMPLE_ATTRIBUTION = `XIYIN AUDIO SAMPLE ATTRIBUTION
+
+Piano, acoustic guitar, cello, clarinet, and xylophone samples
+Source: tonejs-instruments by Nicholaus P. Brosowsky
+Repository: https://github.com/nbrosowsky/tonejs-instruments
+Source revision: 622c2f1c32c8cfce4158ddc3eb26e518ddef37e5
+License: Creative Commons Attribution 3.0
+License URL: https://creativecommons.org/licenses/by/3.0/
+Changes: redistributed as an unmodified, reduced multisample subset.
+Original sources documented by the collection:
+- Piano, clarinet, and xylophone: VSCO 2 Community Edition / Versilian Studios
+- Acoustic guitar: University of Iowa Musical Instrument Samples
+- Cello: Freesound user flcellogrl, recording 12408__flcellogrl__real-cello-notes
+
+Frame drum, kick, shaker, and woodblock samples
+Source: Versilian Community Sample Library (VCSL)
+Repository: https://github.com/sgossner/VCSL
+Source revision: c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e
+License: CC0 1.0 Universal
+License URL: https://creativecommons.org/publicdomain/zero/1.0/
+Changes: redistributed without audio modification.
+`
+
 function hash(value: string) {
   let output = 0
   for (let index = 0; index < value.length; index += 1) {
@@ -323,6 +346,9 @@ export function prepareAlbumAssets(result: SongResult): Promise<AlbumAssets> {
 }
 
 export function createShareUrl(result: SongResult) {
+  if (assessStorySafety(result.story) === 'crisis') {
+    throw new Error('Crisis stories cannot be shared')
+  }
   const payload = JSON.stringify({
     version: 3,
     generator: 3,
@@ -461,6 +487,7 @@ export async function createAlbumArchive(
     '',
     '由叙音为这段真实故事制作',
   ].join('\n'))
+  entries['声音素材许可.txt'] = strToU8(AUDIO_SAMPLE_ATTRIBUTION)
   const archive = zipSync(entries, { level: 0 })
   const archiveBuffer = archive.buffer.slice(archive.byteOffset, archive.byteOffset + archive.byteLength) as ArrayBuffer
   return new Blob([archiveBuffer], { type: 'application/zip' })

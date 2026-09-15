@@ -1225,7 +1225,7 @@ function App() {
             </div>
 
             {result.analysis.sensitivity === 'sensitive' && (
-              <p className="sensitive-share-note">海报会使用保护性摘要；可播放链接仍会展示完整故事，转发前请确认你愿意让收件人看到原文。</p>
+              <p className="sensitive-share-note">海报会使用保护性摘要；可播放链接和完整素材包的作品信息仍会包含原文，转发前请确认你愿意让收件人看到。</p>
             )}
 
             <PosterPreview result={result} poster={shareAssets?.poster} />
