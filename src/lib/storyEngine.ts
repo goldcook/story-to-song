@@ -40,7 +40,7 @@ const MOODS: Record<MoodId, MoodDefinition> = {
     energy: 82,
     warmth: 76,
     genre: '轻快流行',
-    instruments: ['原声吉他', '大提琴', '框鼓与沙锤'],
+    instruments: ['原声吉他', '明亮钢琴', '框鼓与沙锤'],
     words: ['开心', '快乐', '喜悦', '兴奋', '幸福', '惊喜', '庆祝', '欢呼', '大笑'],
   },
   melancholy: {
@@ -70,7 +70,7 @@ const MOODS: Record<MoodId, MoodDefinition> = {
     energy: 61,
     warmth: 72,
     genre: '治愈流行',
-    instruments: ['钢琴', '大提琴和声', '原声吉他'],
+    instruments: ['钢琴', '原声吉他', '轻打击乐'],
     words: ['希望', '未来', '终于', '明天', '重新', '勇气', '坚持', '相信', '梦想', '成长', '出发', '天亮', '终点', '微光'],
   },
   tense: {
@@ -100,7 +100,7 @@ const MOODS: Record<MoodId, MoodDefinition> = {
     energy: 36,
     warmth: 94,
     genre: '温柔唱作',
-    instruments: ['原声吉他', '柔和钢琴', '大提琴'],
+    instruments: ['原声吉他', '柔和钢琴'],
     words: ['拥抱', '陪伴', '温暖', '牵手', '礼物', '照顾', '晚安', '心动', '守着', '轻轻'],
   },
   calm: {
@@ -115,7 +115,7 @@ const MOODS: Record<MoodId, MoodDefinition> = {
     energy: 20,
     warmth: 63,
     genre: '氛围民谣',
-    instruments: ['单簧管', '原声吉他', '大提琴'],
+    instruments: ['单簧管', '原声吉他'],
     words: ['安静', '平静', '宁静', '安心', '释然', '放下', '散步', '睡着', '慢慢', '静静'],
   },
 }
@@ -668,10 +668,10 @@ function deriveMoodProfile(mood: MoodDefinition, analysis: Omit<StoryEmotionAnal
   if (dimensions.grief > 0.34) instruments.push('柔音钢琴', '大提琴弓弦')
   if (dimensions.nostalgia > 0.3) instruments.push('原声吉他', '柔音钢琴')
   if (dimensions.tension > 0.45) instruments.push('大提琴低音', '实录框鼓')
-  if (dimensions.tenderness > 0.34) instruments.push('原声吉他', '大提琴和声')
-  if (dimensions.openness > 0.34) instruments.push('吉他泛音', '大提琴长音')
+  if (dimensions.tenderness > 0.34) instruments.push('原声吉他', '柔和钢琴')
+  if (dimensions.openness > 0.34) instruments.push('吉他泛音', '单簧管长音')
   if (dimensions.hope > 0.38 && (dimensions.grief <= 0.38 || dimensions.tension > 0.54)) instruments.push('钢琴', '轻打击乐')
-  if (dimensions.calm > 0.4 && dimensions.grief < 0.34) instruments.push('单簧管', '大提琴长音')
+  if (dimensions.calm > 0.4 && dimensions.grief < 0.34) instruments.push('单簧管', '原声吉他泛音')
   instruments.push(...mood.instruments)
   return { ...mood, tempo, key, scale, energy, warmth, instruments: [...new Set(instruments)].slice(0, 4) }
 }

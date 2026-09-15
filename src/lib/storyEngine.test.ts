@@ -41,7 +41,7 @@ describe('story emotion and composition direction', () => {
     expect(result.analysis.dimensions.openness).toBeGreaterThan(0.35)
     expect(result.analysis.dimensions.agency).toBeGreaterThan(0.55)
     expect(getArrangementTracks(result).map((track) => track.label)).toEqual(expect.arrayContaining([
-      '大提琴弓弦层',
+      '原声吉他织体',
       '开阔吉他泛音',
     ]))
   })

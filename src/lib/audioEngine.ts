@@ -50,10 +50,19 @@ interface AudioBuses {
   reverb: AudioNode
 }
 
+type CompositionSection = 'intro' | 'development' | 'turn' | 'climax' | 'outro'
+type LeadInstrument = 'piano' | 'guitar' | 'clarinet'
+type HarmonyInstrument = 'piano' | 'guitar' | 'cello'
+type BassInstrument = 'none' | 'piano' | 'cello'
+type PercussionStyle = 'none' | 'soft' | 'full' | 'restless'
+type MotifFamily = 'recollecting' | 'buoyant' | 'descending' | 'rising' | 'restless' | 'gentle' | 'spacious'
+type CadenceStyle = 'remembered' | 'lifted' | 'unresolved' | 'ascending' | 'suspended' | 'warm' | 'resting'
+
 interface Arrangement {
-  lead: 'piano' | 'pluck' | 'clarinet'
-  pad: 'warm' | 'bowed'
-  percussion: 'none' | 'soft' | 'full'
+  lead: LeadInstrument
+  harmony: HarmonyInstrument
+  bass: BassInstrument
+  percussion: PercussionStyle
 }
 
 interface StoryScene {
@@ -69,34 +78,92 @@ export interface ArrangementTrack {
   role: string
 }
 
+export interface CompositionPlan {
+  mood: MoodId
+  character: string
+  lead: LeadInstrument
+  harmony: HarmonyInstrument
+  bass: BassInstrument
+  percussion: PercussionStyle
+  motifFamily: MotifFamily
+  cadence: CadenceStyle
+  progression: number[]
+  arc: CompositionSection[]
+  leadOctave: number
+  arpeggioSteps: number
+  reverbSeconds: number
+  reverbLevel: number
+  reverbLowpass: number
+  dynamics: Record<CompositionSection, number>
+}
+
 const ARRANGEMENTS: Record<MoodId, Arrangement> = {
-  nostalgic: { lead: 'pluck', pad: 'bowed', percussion: 'soft' },
-  joyful: { lead: 'pluck', pad: 'warm', percussion: 'full' },
-  melancholy: { lead: 'piano', pad: 'bowed', percussion: 'none' },
-  hopeful: { lead: 'piano', pad: 'warm', percussion: 'soft' },
-  tense: { lead: 'pluck', pad: 'bowed', percussion: 'full' },
-  tender: { lead: 'piano', pad: 'warm', percussion: 'none' },
-  calm: { lead: 'clarinet', pad: 'warm', percussion: 'none' },
+  nostalgic: { lead: 'guitar', harmony: 'cello', bass: 'cello', percussion: 'soft' },
+  joyful: { lead: 'guitar', harmony: 'piano', bass: 'none', percussion: 'full' },
+  melancholy: { lead: 'piano', harmony: 'cello', bass: 'cello', percussion: 'none' },
+  hopeful: { lead: 'piano', harmony: 'guitar', bass: 'piano', percussion: 'soft' },
+  tense: { lead: 'guitar', harmony: 'piano', bass: 'cello', percussion: 'restless' },
+  tender: { lead: 'guitar', harmony: 'piano', bass: 'none', percussion: 'none' },
+  calm: { lead: 'clarinet', harmony: 'guitar', bass: 'none', percussion: 'none' },
 }
 
 function getArrangement(result: SongResult): Arrangement {
   const base = ARRANGEMENTS[result.mood.id]
-  const { valence, direction, dimensions } = result.analysis
-  if (result.mood.id === 'joyful' && valence > 0.28 && dimensions.grief + dimensions.tension < 0.72) {
-    return { ...base, lead: 'pluck', pad: 'warm', percussion: 'full' }
+  const { dimensions } = result.analysis
+  if (result.mood.id === 'hopeful' && dimensions.grief > 0.58) {
+    return { ...base, harmony: 'cello' }
   }
-  if (dimensions.tension > 0.54) {
-    return { ...base, lead: 'pluck', pad: 'bowed', percussion: 'full' }
-  }
-  if (dimensions.grief > 0.38 || dimensions.isolation > 0.52) {
-    return { ...base, lead: dimensions.nostalgia > dimensions.grief * 0.8 ? 'pluck' : 'piano', pad: 'bowed', percussion: 'none' }
-  }
-  if (direction === 'rising' || dimensions.hope + dimensions.agency > 0.9) {
-    return { ...base, lead: 'piano', pad: dimensions.tension > 0.24 ? 'bowed' : 'warm', percussion: 'soft' }
-  }
-  if (dimensions.nostalgia > 0.46) return { ...base, lead: 'pluck', pad: 'bowed', percussion: 'soft' }
-  if (dimensions.calm > 0.48 && valence >= -0.18) return { ...base, lead: 'clarinet', pad: 'warm', percussion: 'none' }
   return base
+}
+
+const PROGRESSION_BANKS: Record<MoodId, number[][]> = {
+  nostalgic: [[0, 3, 5, 4, 0, 5, 3, 4], [0, 5, 3, 6, 0, 3, 4, 4]],
+  joyful: [[0, 1, 3, 4, 0, 5, 1, 4], [0, 3, 1, 4, 5, 3, 1, 4]],
+  melancholy: [[0, 5, 3, 6, 0, 5, 4, 4], [0, 3, 5, 4, 0, 6, 3, 4]],
+  hopeful: [[0, 4, 5, 3, 1, 4, 3, 4], [0, 3, 5, 4, 1, 3, 4, 4]],
+  tense: [[0, 1, 0, 5, 1, 6, 1, 4], [0, 5, 1, 0, 6, 1, 5, 4]],
+  tender: [[0, 3, 1, 4, 0, 1, 3, 4], [0, 4, 1, 3, 0, 3, 1, 4]],
+  calm: [[0, 3, 1, 0, 4, 1, 3, 0], [0, 1, 3, 0, 1, 4, 3, 0]],
+}
+
+const PLAN_CHARACTER: Record<MoodId, string> = {
+  nostalgic: '旧照片般的木吉他与弓弦回望',
+  joyful: '短促跳跃的原声拨弦与明亮重拍',
+  melancholy: '缓慢下行的钢琴与低弓长线',
+  hopeful: '从低处逐步展开的钢琴与吉他',
+  tense: '不规则木质脉冲与悬而未决的低音',
+  tender: '近距离的指弹与柔软钢琴回应',
+  calm: '有呼吸间隔的单簧管与开放拨弦',
+}
+
+const MOTIF_FAMILIES: Record<MoodId, MotifFamily> = {
+  nostalgic: 'recollecting',
+  joyful: 'buoyant',
+  melancholy: 'descending',
+  hopeful: 'rising',
+  tense: 'restless',
+  tender: 'gentle',
+  calm: 'spacious',
+}
+
+const CADENCES: Record<MoodId, CadenceStyle> = {
+  nostalgic: 'remembered',
+  joyful: 'lifted',
+  melancholy: 'unresolved',
+  hopeful: 'ascending',
+  tense: 'suspended',
+  tender: 'warm',
+  calm: 'resting',
+}
+
+const PLAN_DYNAMICS: Record<MoodId, Record<CompositionSection, number>> = {
+  nostalgic: { intro: 0.5, development: 0.72, turn: 0.58, climax: 0.86, outro: 0.46 },
+  joyful: { intro: 0.72, development: 0.92, turn: 0.8, climax: 1.08, outro: 0.9 },
+  melancholy: { intro: 0.42, development: 0.58, turn: 0.46, climax: 0.74, outro: 0.34 },
+  hopeful: { intro: 0.48, development: 0.72, turn: 0.62, climax: 1, outro: 0.78 },
+  tense: { intro: 0.62, development: 0.9, turn: 0.5, climax: 1.14, outro: 0.44 },
+  tender: { intro: 0.46, development: 0.64, turn: 0.55, climax: 0.76, outro: 0.5 },
+  calm: { intro: 0.38, development: 0.5, turn: 0.42, climax: 0.58, outro: 0.4 },
 }
 
 const SAMPLE_DEFINITIONS: SampleDefinition[] = [
@@ -226,28 +293,39 @@ function shouldUseRestrainedShaker(result: SongResult, arrangement: Arrangement)
 }
 
 export function getArrangementTracks(result: SongResult): ArrangementTrack[] {
-  const arrangement = getArrangement(result)
+  const plan = getCompositionPlan(result)
   const scene = getStoryScene(result.story)
-  const leadNames = { piano: '实录柔音钢琴', pluck: '实录原声吉他', clarinet: '实录单簧管' }
-  const padNames = { warm: '大提琴室内和声', bowed: '大提琴弓弦层' }
+  const leadNames: Record<LeadInstrument, string> = { piano: '实录柔音钢琴', guitar: '实录原声吉他', clarinet: '实录单簧管' }
+  const harmonyNames: Record<HarmonyInstrument, string> = { piano: '明亮钢琴和声', guitar: '原声吉他织体', cello: '大提琴弓弦层' }
   const tracks: ArrangementTrack[] = [
-    { id: 'lead', label: leadNames[arrangement.lead], role: '主题旋律' },
-    { id: 'pad', label: padNames[arrangement.pad], role: '情绪和声' },
-    { id: 'bass', label: '大提琴低音', role: '低频叙事线' },
+    { id: 'lead', label: leadNames[plan.lead], role: '主题旋律' },
+    { id: 'harmony', label: harmonyNames[plan.harmony], role: '情绪和声' },
   ]
+
+  if (plan.bass !== 'none') {
+    tracks.push({
+      id: 'bass',
+      label: plan.bass === 'cello' ? '大提琴低音' : '低音钢琴',
+      role: '低频叙事线',
+    })
+  }
 
   if (result.analysis.dimensions.isolation < 0.62) {
     tracks.push({
       id: 'counterline',
-      label: arrangement.lead === 'piano' ? '原声吉他回应' : '柔音钢琴回应',
+      label: plan.lead === 'piano' ? '原声吉他回应' : '柔音钢琴回应',
       role: '高潮段变奏',
     })
   }
 
-  if (arrangement.percussion !== 'none') {
+  if (plan.percussion !== 'none') {
     tracks.push({
       id: 'rhythm',
-      label: arrangement.percussion === 'full' ? '实录框鼓、木块与沙锤' : '实录轻打击乐',
+      label: plan.percussion === 'full'
+        ? '实录框鼓、木块与沙锤'
+        : plan.percussion === 'restless'
+          ? '实录框鼓与错位木击'
+          : '实录轻打击乐',
       role: '节奏脉冲',
     })
   }
@@ -258,7 +336,7 @@ export function getArrangementTracks(result: SongResult): ArrangementTrack[] {
   }
   if (result.analysis.dimensions.openness > 0.34) tracks.push({ id: 'openness', label: '开阔吉他泛音', role: '自由与远方' })
   if (result.analysis.dimensions.isolation > 0.46) tracks.push({ id: 'silence', label: '低音留白', role: '孤独与停顿' })
-  if (shouldUseRestrainedShaker(result, arrangement)) tracks.push({ id: 'brush', label: '实录细沙锤', role: '克制律动' })
+  if (shouldUseRestrainedShaker(result, getArrangement(result))) tracks.push({ id: 'brush', label: '实录细沙锤', role: '克制律动' })
   return tracks
 }
 
@@ -294,12 +372,80 @@ function seededUnit(seed: number, index: number) {
   return (value >>> 0) / 0xffffffff
 }
 
-type CompositionSection = 'intro' | 'development' | 'turn' | 'climax' | 'outro'
-
 interface MotifNote {
   at: number
   degree: number
   length: number
+}
+
+const MOTIF_BANKS: Record<MotifFamily, MotifNote[][]> = {
+  recollecting: [
+    [{ at: 0.08, degree: 4, length: 0.66 }, { at: 1.04, degree: 2, length: 0.54 }, { at: 2.08, degree: 3, length: 0.72 }, { at: 3.18, degree: 1, length: 0.88 }],
+    [{ at: 0.16, degree: 2, length: 0.62 }, { at: 1.14, degree: 4, length: 0.7 }, { at: 2.26, degree: 3, length: 0.58 }, { at: 3.2, degree: 0, length: 0.94 }],
+  ],
+  buoyant: [
+    [{ at: 0, degree: 0, length: 0.28 }, { at: 0.46, degree: 2, length: 0.24 }, { at: 0.94, degree: 4, length: 0.3 }, { at: 1.52, degree: 5, length: 0.24 }, { at: 2.02, degree: 4, length: 0.28 }, { at: 2.54, degree: 6, length: 0.24 }, { at: 3.06, degree: 7, length: 0.56 }],
+    [{ at: 0.12, degree: 2, length: 0.26 }, { at: 0.58, degree: 4, length: 0.28 }, { at: 1.06, degree: 5, length: 0.24 }, { at: 1.48, degree: 4, length: 0.28 }, { at: 2.06, degree: 2, length: 0.26 }, { at: 2.58, degree: 4, length: 0.28 }, { at: 3.14, degree: 6, length: 0.5 }],
+    [{ at: 0, degree: 4, length: 0.24 }, { at: 0.4, degree: 5, length: 0.24 }, { at: 0.84, degree: 6, length: 0.3 }, { at: 1.46, degree: 4, length: 0.26 }, { at: 1.94, degree: 2, length: 0.3 }, { at: 2.52, degree: 5, length: 0.3 }, { at: 3.08, degree: 7, length: 0.58 }],
+  ],
+  descending: [
+    [{ at: 0.12, degree: 5, length: 0.86 }, { at: 1.24, degree: 4, length: 0.68 }, { at: 2.28, degree: 2, length: 0.82 }, { at: 3.4, degree: 1, length: 1.18 }],
+    [{ at: 0.24, degree: 4, length: 0.76 }, { at: 1.3, degree: 3, length: 0.76 }, { at: 2.38, degree: 1, length: 0.94 }, { at: 3.5, degree: 0, length: 1.2 }],
+  ],
+  rising: [
+    [{ at: 0, degree: 0, length: 0.46 }, { at: 0.72, degree: 1, length: 0.42 }, { at: 1.42, degree: 3, length: 0.52 }, { at: 2.26, degree: 4, length: 0.6 }, { at: 3.18, degree: 6, length: 0.74 }],
+    [{ at: 0.12, degree: 1, length: 0.44 }, { at: 0.82, degree: 2, length: 0.42 }, { at: 1.5, degree: 4, length: 0.54 }, { at: 2.38, degree: 5, length: 0.56 }, { at: 3.22, degree: 7, length: 0.72 }],
+  ],
+  restless: [
+    [{ at: 0, degree: 0, length: 0.28 }, { at: 0.52, degree: 4, length: 0.3 }, { at: 1.14, degree: 1, length: 0.24 }, { at: 1.7, degree: 5, length: 0.32 }, { at: 2.46, degree: 2, length: 0.24 }, { at: 2.92, degree: 6, length: 0.28 }, { at: 3.48, degree: 1, length: 0.4 }],
+    [{ at: 0.16, degree: 5, length: 0.26 }, { at: 0.64, degree: 1, length: 0.3 }, { at: 1.38, degree: 6, length: 0.26 }, { at: 1.9, degree: 2, length: 0.3 }, { at: 2.68, degree: 5, length: 0.24 }, { at: 3.12, degree: 1, length: 0.42 }],
+  ],
+  gentle: [
+    [{ at: 0.18, degree: 0, length: 0.62 }, { at: 1.12, degree: 2, length: 0.5 }, { at: 2.12, degree: 4, length: 0.7 }, { at: 3.24, degree: 2, length: 0.82 }],
+    [{ at: 0.1, degree: 2, length: 0.58 }, { at: 1.06, degree: 1, length: 0.56 }, { at: 2.08, degree: 3, length: 0.7 }, { at: 3.22, degree: 4, length: 0.78 }],
+  ],
+  spacious: [
+    [{ at: 0.28, degree: 0, length: 1.12 }, { at: 1.92, degree: 3, length: 0.92 }, { at: 3.28, degree: 2, length: 1.18 }],
+    [{ at: 0.18, degree: 2, length: 1.02 }, { at: 1.82, degree: 4, length: 0.9 }, { at: 3.22, degree: 1, length: 1.22 }],
+  ],
+}
+
+const CADENCE_MOTIFS: Record<CadenceStyle, { approach: MotifNote[]; outro: MotifNote[]; finalChord: number }> = {
+  remembered: {
+    approach: [{ at: 0.1, degree: 4, length: 0.7 }, { at: 1.18, degree: 3, length: 0.62 }, { at: 2.18, degree: 2, length: 0.72 }, { at: 3.22, degree: 0, length: 1.02 }],
+    outro: [{ at: 0.42, degree: 4, length: 0.76 }, { at: 1.58, degree: 2, length: 0.82 }, { at: 2.84, degree: 0, length: 1.5 }],
+    finalChord: 0,
+  },
+  lifted: {
+    approach: [{ at: 0, degree: 2, length: 0.3 }, { at: 0.52, degree: 4, length: 0.3 }, { at: 1.08, degree: 5, length: 0.34 }, { at: 1.72, degree: 6, length: 0.34 }, { at: 2.36, degree: 7, length: 0.88 }],
+    outro: [{ at: 0, degree: 4, length: 0.32 }, { at: 0.58, degree: 5, length: 0.3 }, { at: 1.16, degree: 6, length: 0.36 }, { at: 1.86, degree: 7, length: 1.62 }],
+    finalChord: 0,
+  },
+  unresolved: {
+    approach: [{ at: 0.2, degree: 5, length: 0.82 }, { at: 1.38, degree: 4, length: 0.72 }, { at: 2.5, degree: 2, length: 1.12 }],
+    outro: [{ at: 0.46, degree: 4, length: 0.86 }, { at: 1.72, degree: 2, length: 0.92 }, { at: 3.04, degree: 2, length: 1.42 }],
+    finalChord: 0,
+  },
+  ascending: {
+    approach: [{ at: 0.08, degree: 1, length: 0.5 }, { at: 0.9, degree: 3, length: 0.5 }, { at: 1.76, degree: 4, length: 0.58 }, { at: 2.7, degree: 6, length: 0.98 }],
+    outro: [{ at: 0.22, degree: 2, length: 0.5 }, { at: 1.08, degree: 4, length: 0.56 }, { at: 2.04, degree: 6, length: 0.62 }, { at: 3.08, degree: 7, length: 1.4 }],
+    finalChord: 0,
+  },
+  suspended: {
+    approach: [{ at: 0, degree: 1, length: 0.34 }, { at: 0.62, degree: 5, length: 0.32 }, { at: 1.34, degree: 2, length: 0.36 }, { at: 2.12, degree: 6, length: 0.34 }, { at: 2.84, degree: 1, length: 0.92 }],
+    outro: [{ at: 0.16, degree: 5, length: 0.4 }, { at: 0.86, degree: 1, length: 0.4 }, { at: 1.62, degree: 6, length: 0.46 }, { at: 2.52, degree: 1, length: 1.5 }],
+    finalChord: 1,
+  },
+  warm: {
+    approach: [{ at: 0.18, degree: 2, length: 0.62 }, { at: 1.18, degree: 4, length: 0.62 }, { at: 2.18, degree: 3, length: 0.68 }, { at: 3.22, degree: 2, length: 0.94 }],
+    outro: [{ at: 0.36, degree: 4, length: 0.74 }, { at: 1.5, degree: 2, length: 0.8 }, { at: 2.74, degree: 0, length: 1.58 }],
+    finalChord: 0,
+  },
+  resting: {
+    approach: [{ at: 0.34, degree: 3, length: 1.08 }, { at: 2.04, degree: 2, length: 0.94 }, { at: 3.46, degree: 0, length: 1.08 }],
+    outro: [{ at: 0.52, degree: 4, length: 1.08 }, { at: 2.12, degree: 2, length: 0.92 }, { at: 3.46, degree: 0, length: 1.4 }],
+    finalChord: 0,
+  },
 }
 
 export function getCompositionArc(tempo: number, shortIntro = false): CompositionSection[] {
@@ -315,6 +461,71 @@ export function getCompositionArc(tempo: number, shortIntro = false): Compositio
     if (barIndex >= turnStart && barIndex < climaxStart) return 'turn'
     return 'development'
   })
+}
+
+function getMoodCompositionArc(tempo: number, mood: MoodId) {
+  const bars = previewBars(tempo)
+  const introBars = mood === 'joyful' || mood === 'tense' || mood === 'hopeful'
+    ? 1
+    : bars >= 7 ? 2 : 1
+  const outroIndex = bars - 1
+  const turnRatio = mood === 'tense' ? 0.38 : mood === 'joyful' ? 0.52 : mood === 'hopeful' ? 0.44 : 0.48
+  const climaxRatio = mood === 'tense' ? 0.62 : mood === 'calm' ? 0.76 : mood === 'melancholy' ? 0.7 : 0.66
+  const turnStart = Math.max(introBars + 1, Math.floor(bars * turnRatio))
+  const climaxStart = Math.max(turnStart + 1, Math.floor(bars * climaxRatio))
+  return Array.from({ length: bars }, (_, barIndex): CompositionSection => {
+    if (barIndex < introBars) return 'intro'
+    if (barIndex === outroIndex) return 'outro'
+    if (barIndex >= climaxStart) return 'climax'
+    if (barIndex >= turnStart) return 'turn'
+    return 'development'
+  })
+}
+
+export function getCompositionPlan(result: SongResult): CompositionPlan {
+  const seed = storySeed(result.story)
+  const mood = result.mood.id
+  const arrangement = getArrangement(result)
+  const reverb = {
+    nostalgic: [1.3, 0.16, 4700],
+    joyful: [0.78, 0.08, 7800],
+    melancholy: [1.55, 0.2, 3900],
+    hopeful: [1, 0.12, 6800],
+    tense: [0.68, 0.07, 6100],
+    tender: [1.08, 0.13, 6200],
+    calm: [1.62, 0.18, 5400],
+  } satisfies Record<MoodId, [number, number, number]>
+  const arpeggioSteps: Record<MoodId, number> = {
+    nostalgic: 4,
+    joyful: 8,
+    melancholy: 2,
+    hopeful: 6,
+    tense: 6,
+    tender: 4,
+    calm: 2,
+  }
+  const leadOctave = mood === 'joyful'
+    ? 1
+    : mood === 'melancholy' && result.analysis.dimensions.grief + result.analysis.dimensions.isolation > 0.72
+      ? -1
+      : 0
+  const [reverbSeconds, reverbLevel, reverbLowpass] = reverb[mood]
+  const progressionBank = PROGRESSION_BANKS[mood]
+  return {
+    mood,
+    character: PLAN_CHARACTER[mood],
+    ...arrangement,
+    motifFamily: MOTIF_FAMILIES[mood],
+    cadence: CADENCES[mood],
+    progression: progressionBank[seed % progressionBank.length],
+    arc: getMoodCompositionArc(result.mood.tempo, mood),
+    leadOctave,
+    arpeggioSteps: arpeggioSteps[mood],
+    reverbSeconds,
+    reverbLevel,
+    reverbLowpass,
+    dynamics: PLAN_DYNAMICS[mood],
+  }
 }
 
 function normalizedDegree(degree: number, scaleLength: number) {
@@ -495,9 +706,15 @@ function scheduleSampledOneShot(
   return true
 }
 
-function createReverb(context: AudioContext, destination: AudioNode, seed: number) {
+function createReverb(
+  context: AudioContext,
+  destination: AudioNode,
+  seed: number,
+  duration: number,
+  level: number,
+  lowpass: number,
+) {
   const convolver = context.createConvolver()
-  const duration = 1.45
   const impulse = context.createBuffer(2, context.sampleRate * duration, context.sampleRate)
   let state = seed || 1
   for (let channel = 0; channel < impulse.numberOfChannels; channel += 1) {
@@ -512,8 +729,8 @@ function createReverb(context: AudioContext, destination: AudioNode, seed: numbe
   const returnGain = context.createGain()
   const returnFilter = context.createBiquadFilter()
   returnFilter.type = 'lowpass'
-  returnFilter.frequency.value = 4800
-  returnGain.gain.value = 0.17
+  returnFilter.frequency.value = lowpass
+  returnGain.gain.value = level
   convolver.connect(returnFilter)
   returnFilter.connect(returnGain)
   returnGain.connect(destination)
@@ -643,6 +860,29 @@ function scheduleAcousticBass(
   ))
 }
 
+function schedulePianoBass(
+  context: AudioContext,
+  buses: AudioBuses,
+  sampleBank: SampleBank | undefined,
+  frequency: number,
+  start: number,
+  duration: number,
+  volume: number,
+) {
+  return Boolean(sampleBank && scheduleSampledVoice(
+    context,
+    buses,
+    sampleBank,
+    'piano',
+    frequency,
+    start,
+    duration,
+    volume,
+    0,
+    { attack: 0.012, release: 0.32, dry: 0.97, wet: 0.08, lowpass: 1800 },
+  ))
+}
+
 function scheduleFrameDrum(
   context: AudioContext,
   buses: AudioBuses,
@@ -742,9 +982,16 @@ function scheduleComposition(
   compressor.connect(output)
   output.connect(destination)
 
-  const reverb = createReverb(context, master, seed ^ 0x51f15e)
+  const plan = getCompositionPlan(result)
+  const reverb = createReverb(
+    context,
+    master,
+    seed ^ 0x51f15e,
+    plan.reverbSeconds,
+    plan.reverbLevel,
+    plan.reverbLowpass,
+  )
   const buses: AudioBuses = { dry: master, reverb }
-  const arrangement = getArrangement(result)
   const scene = getStoryScene(result.story)
   const beat = 60 / result.mood.tempo
   const bar = beat * 4
@@ -753,51 +1000,12 @@ function scheduleComposition(
   const duration = musicalDuration + RELEASE_TAIL_SECONDS
   const root = rootFrequency(result.mood.key)
   const scale = SCALE_STEPS[result.mood.scale]
-  const progressionBanks = result.mood.scale === 'minor'
-    ? [[0, 5, 3, 6, 0, 5, 4, 0], [0, 3, 5, 4, 0, 6, 3, 0], [0, 6, 5, 3, 0, 4, 5, 0]]
-    : [[0, 4, 5, 3, 0, 5, 3, 4], [0, 3, 4, 5, 0, 4, 3, 0], [0, 5, 3, 4, 0, 3, 5, 0]]
-  const joyfulProgressions = [[0, 3, 4, 4, 0, 3, 1, 4], [0, 4, 5, 3, 0, 4, 1, 4]]
-  const isJoyful = result.mood.id === 'joyful'
-    && result.analysis.valence > 0.28
-    && result.analysis.dimensions.grief + result.analysis.dimensions.tension < 0.72
-  const progressionSource = isJoyful ? joyfulProgressions : progressionBanks
-  const progression = progressionSource[seed % progressionSource.length]
-  const arc = getCompositionArc(result.mood.tempo, isJoyful)
-  const balancedMotifs = [
-    [{ at: 0, degree: 0, length: 0.68 }, { at: 0.9, degree: 2, length: 0.55 }, { at: 2.05, degree: 4, length: 0.78 }, { at: 3.2, degree: 2, length: 0.72 }],
-    [{ at: 0, degree: 1, length: 0.52 }, { at: 0.72, degree: 2, length: 0.7 }, { at: 1.9, degree: 5, length: 0.62 }, { at: 2.85, degree: 4, length: 1.02 }],
-    [{ at: 0, degree: 4, length: 0.72 }, { at: 1.05, degree: 3, length: 0.52 }, { at: 1.82, degree: 2, length: 0.66 }, { at: 3.05, degree: 1, length: 0.86 }],
-    [{ at: 0, degree: 2, length: 0.55 }, { at: 0.8, degree: 4, length: 0.82 }, { at: 2.1, degree: 6, length: 0.55 }, { at: 2.95, degree: 4, length: 0.95 }],
-  ]
-  const descendingMotifs = [
-    [{ at: 0, degree: 5, length: 0.82 }, { at: 1.08, degree: 4, length: 0.64 }, { at: 2.08, degree: 2, length: 0.76 }, { at: 3.22, degree: 1, length: 1.12 }],
-    [{ at: 0.18, degree: 4, length: 0.72 }, { at: 1.2, degree: 3, length: 0.72 }, { at: 2.18, degree: 1, length: 0.9 }, { at: 3.42, degree: 0, length: 1.18 }],
-    [{ at: 0, degree: 3, length: 0.88 }, { at: 1.34, degree: 2, length: 0.62 }, { at: 2.35, degree: 0, length: 0.8 }, { at: 3.45, degree: -1, length: 1.05 }],
-  ]
-  const risingMotifs = [
-    [{ at: 0, degree: 0, length: 0.58 }, { at: 0.86, degree: 1, length: 0.56 }, { at: 1.78, degree: 3, length: 0.7 }, { at: 2.9, degree: 4, length: 1.1 }],
-    [{ at: 0.12, degree: 1, length: 0.62 }, { at: 1.05, degree: 2, length: 0.58 }, { at: 2.02, degree: 4, length: 0.7 }, { at: 3.08, degree: 5, length: 1.02 }],
-  ]
-  const joyfulMotifs = [
-    [{ at: 0, degree: 0, length: 0.38 }, { at: 0.55, degree: 2, length: 0.32 }, { at: 1.12, degree: 4, length: 0.42 }, { at: 1.9, degree: 5, length: 0.34 }, { at: 2.48, degree: 4, length: 0.38 }, { at: 3.08, degree: 6, length: 0.62 }],
-    [{ at: 0.12, degree: 2, length: 0.34 }, { at: 0.68, degree: 4, length: 0.38 }, { at: 1.3, degree: 5, length: 0.34 }, { at: 1.92, degree: 4, length: 0.32 }, { at: 2.5, degree: 2, length: 0.36 }, { at: 3.12, degree: 4, length: 0.6 }],
-  ]
-  const tenseMotifs = [
-    [{ at: 0, degree: 0, length: 0.42 }, { at: 0.64, degree: 4, length: 0.44 }, { at: 1.46, degree: 1, length: 0.4 }, { at: 2.24, degree: 5, length: 0.46 }, { at: 3.18, degree: 3, length: 0.68 }],
-    [{ at: 0, degree: 5, length: 0.4 }, { at: 0.72, degree: 2, length: 0.48 }, { at: 1.58, degree: 6, length: 0.42 }, { at: 2.4, degree: 1, length: 0.48 }, { at: 3.28, degree: 4, length: 0.62 }],
-  ]
-  const motifTemplates = isJoyful
-    ? joyfulMotifs
-    : result.analysis.dimensions.tension > 0.5
-    ? tenseMotifs
-    : result.analysis.dimensions.grief > 0.42
-      ? descendingMotifs
-      : result.analysis.direction === 'rising' || result.analysis.dimensions.hope > 0.48
-        ? risingMotifs
-        : balancedMotifs
+  const progression = plan.progression
+  const arc = plan.arc
+  const motifTemplates = MOTIF_BANKS[plan.motifFamily]
   const baseMotif = seed % motifTemplates.length
   const coreMotif = motifTemplates[baseMotif]
-  const leadOctave = result.analysis.dimensions.grief + result.analysis.dimensions.isolation > 0.72 ? -1 : 0
+  const leadOctave = plan.leadOctave
   const spaciousness = result.analysis.dimensions.openness
   const sparseness = clamp(
     result.analysis.dimensions.grief * 0.45
@@ -807,29 +1015,20 @@ function scheduleComposition(
     1,
   )
   const introBars = arc.filter((section) => section === 'intro').length
-  const turnStart = arc.indexOf('turn')
-  const climaxStart = arc.indexOf('climax')
   const outroIndex = bars - 1
-  const introEnd = startAt + introBars * bar
-  const turnAt = startAt + turnStart * bar
-  const climaxAt = startAt + climaxStart * bar
-  const outroAt = startAt + outroIndex * bar
 
   master.gain.setValueAtTime(0.0001, startAt)
-  master.gain.linearRampToValueAtTime(0.48, startAt + 0.42)
-  master.gain.setValueAtTime(0.52, introEnd)
-  master.gain.linearRampToValueAtTime(0.67, Math.max(introEnd + 0.1, turnAt - 0.18))
-  master.gain.linearRampToValueAtTime(0.5, turnAt + Math.min(0.34, beat * 0.7))
-  master.gain.linearRampToValueAtTime(0.82, climaxAt + Math.min(0.5, beat))
-  master.gain.setValueAtTime(0.82, Math.max(climaxAt + 0.5, outroAt - 0.2))
-  master.gain.linearRampToValueAtTime(0.54, outroAt + 0.18)
-  master.gain.setValueAtTime(0.54, startAt + musicalDuration - 0.32)
+  arc.forEach((section, barIndex) => {
+    const targetAt = startAt + barIndex * bar + (barIndex === 0 ? Math.min(0.34, beat * 0.7) : 0.08)
+    master.gain.linearRampToValueAtTime(plan.dynamics[section], targetAt)
+  })
+  master.gain.setValueAtTime(plan.dynamics.outro, startAt + musicalDuration - 0.32)
   master.gain.exponentialRampToValueAtTime(0.0001, startAt + duration)
 
   const scheduleLead = (frequency: number, noteStart: number, noteDuration: number, volume: number, pan: number) => {
-    if (arrangement.lead === 'clarinet') {
+    if (plan.lead === 'clarinet') {
       scheduleAcousticClarinet(context, buses, sampleBank, frequency, noteStart, noteDuration, volume * 0.82, pan)
-    } else if (arrangement.lead === 'pluck') {
+    } else if (plan.lead === 'guitar') {
       scheduleAcousticGuitar(context, buses, sampleBank, frequency, noteStart, noteDuration, volume * 0.92, pan)
     } else {
       scheduleAcousticPiano(context, buses, sampleBank, frequency, noteStart, noteDuration, volume, pan)
@@ -844,7 +1043,8 @@ function scheduleComposition(
     const isTurn = section === 'turn'
     const isClimax = section === 'climax'
     const isOutro = section === 'outro'
-    const chordRoot = isOutro ? 0 : progression[barIndex % progression.length]
+    const cadence = CADENCE_MOTIFS[plan.cadence]
+    const chordRoot = isOutro ? cadence.finalChord : progression[barIndex % progression.length]
     const voicedTriad = voiceLeadChord(chordRoot, previousChordDegrees, scale.length)
     previousChordDegrees = voicedTriad
     const chordDegrees = isIntro
@@ -852,45 +1052,72 @@ function scheduleComposition(
       : isClimax
         ? [...voicedTriad, voicedTriad[0] + scale.length]
         : voicedTriad
-    const dynamics = isIntro
-      ? 0.56 + barIndex * 0.07
-      : isTurn
-        ? 0.66
-        : isClimax
-          ? 1.06
-        : isOutro
-          ? 0.58
-          : 0.78 + (barIndex - introBars) / Math.max(1, turnStart - introBars) * 0.12
+    const dynamics = plan.dynamics[section]
 
     chordDegrees.forEach((degree, noteIndex) => {
       const semitone = degreeSemitone(scale, degree)
-      scheduleCelloLayer(
-        context,
-        buses,
-        sampleBank,
-        noteFrequency(root, semitone, -1),
-        barStart + noteIndex * 0.014,
-        isOutro ? bar + RELEASE_TAIL_SECONDS * 0.7 : bar * 0.96,
-        (isClimax ? 0.019 : isTurn ? 0.016 : 0.024) * dynamics,
-        (noteIndex - (chordDegrees.length - 1) / 2) * 0.16,
-        arrangement.pad === 'bowed',
-      )
+      const frequency = noteFrequency(root, semitone, -1)
+      const pan = (noteIndex - (chordDegrees.length - 1) / 2) * 0.16
+      if (plan.harmony === 'cello') {
+        scheduleCelloLayer(
+          context,
+          buses,
+          sampleBank,
+          frequency,
+          barStart + noteIndex * 0.014,
+          isOutro ? bar + RELEASE_TAIL_SECONDS * 0.7 : bar * 0.96,
+          (isClimax ? 0.019 : isTurn ? 0.014 : 0.022) * dynamics,
+          pan,
+          true,
+        )
+      } else if (plan.harmony === 'piano') {
+        const pulseOffsets = plan.mood === 'joyful'
+          ? isOutro ? [0] : [0, 1.5, 2.75]
+          : plan.mood === 'tense'
+            ? isOutro ? [0] : [0, 1.25, 2.62]
+            : [0]
+        pulseOffsets.forEach((offset, pulseIndex) => {
+          scheduleAcousticPiano(
+            context,
+            buses,
+            sampleBank,
+            frequency,
+            barStart + beat * offset + noteIndex * 0.012,
+            beat * (plan.mood === 'tender' ? 1.5 : 0.46),
+            (plan.mood === 'joyful' ? 0.018 : 0.014) * dynamics * (pulseIndex === 0 ? 1 : 0.84),
+            pan,
+          )
+        })
+      } else if (noteIndex < 3) {
+        const offset = isIntro ? 1.8 + noteIndex * 0.42 : noteIndex * (plan.mood === 'calm' ? 0.82 : 0.56)
+        scheduleAcousticGuitar(
+          context,
+          buses,
+          sampleBank,
+          frequency,
+          barStart + beat * offset,
+          beat * (plan.mood === 'calm' ? 1.18 : 0.7),
+          0.018 * dynamics,
+          pan,
+        )
+      }
     })
 
     const rootSemitone = degreeSemitone(scale, chordRoot)
-    if (!isIntro) {
-      scheduleAcousticBass(
-        context,
-        buses,
-        sampleBank,
-        noteFrequency(root, rootSemitone, -2),
-        barStart,
-        isOutro ? beat * 3.5 : beat * 1.6,
-        (isOutro ? 0.075 : 0.1) * dynamics,
-      )
+    if (!isIntro && plan.bass !== 'none') {
+      const scheduleBass = plan.bass === 'cello' ? scheduleAcousticBass : schedulePianoBass
+      scheduleBass(
+          context,
+          buses,
+          sampleBank,
+          noteFrequency(root, rootSemitone, -2),
+          barStart,
+          isOutro ? beat * 3.5 : beat * 1.45,
+          (isOutro ? 0.07 : 0.092) * dynamics,
+        )
       if (!isOutro && !isTurn) {
         const secondBassDegree = isClimax ? chordRoot + 4 : chordRoot
-        scheduleAcousticBass(
+        scheduleBass(
           context,
           buses,
           sampleBank,
@@ -908,14 +1135,12 @@ function scheduleComposition(
       : isIntro
         ? 2
         : isTurn
-          ? 2
+          ? Math.max(2, Math.floor(plan.arpeggioSteps / 2))
         : isClimax
-          ? 8
-        : isJoyful
-          ? 6
+          ? Math.min(8, plan.arpeggioSteps + 2)
         : sparseness > 0.62
           ? 2
-          : 4
+          : plan.arpeggioSteps
     for (let step = 0; step < arpeggioSteps; step += 1) {
       const chordDegree = chordDegrees[arpeggioPattern[step] % chordDegrees.length]
       const semitone = degreeSemitone(scale, chordDegree)
@@ -923,10 +1148,10 @@ function scheduleComposition(
         ? barStart + beat * (2 + step)
         : barStart + step * (bar / arpeggioSteps)
       const playingOffset = (seededUnit(seed ^ 0x4a17, barIndex * 37 + step) - 0.5) * 0.026
-        + (arrangement.lead === 'pluck' && step % 2 === 1 ? 0.012 : 0)
+        + (plan.lead === 'guitar' && step % 2 === 1 ? 0.012 : 0)
       const noteStart = Math.max(barStart, gridStart + playingOffset)
       const humanVelocity = 0.92 + seededUnit(seed, barIndex * 31 + step) * 0.14
-      if (arrangement.lead === 'pluck') {
+      if (plan.lead === 'guitar') {
         scheduleAcousticPiano(context, buses, sampleBank, noteFrequency(root, semitone, -1), noteStart, beat * 0.72, 0.016 * dynamics * humanVelocity, (step % 2 ? 0.2 : -0.2) * (1 + spaciousness * 0.7))
       } else {
         scheduleAcousticGuitar(context, buses, sampleBank, noteFrequency(root, semitone, -1), noteStart, beat * 0.62, 0.024 * dynamics * humanVelocity, (step % 2 ? 0.23 : -0.23) * (1 + spaciousness * 0.7))
@@ -942,16 +1167,22 @@ function scheduleComposition(
     }))
     const liftedMotif = coreMotif.map((note, noteIndex) => ({
       ...note,
-      degree: note.degree + (result.analysis.direction === 'falling' ? 0 : noteIndex % 2 === 0 ? 2 : 1),
+      degree: note.degree + (
+        plan.motifFamily === 'descending' || plan.motifFamily === 'spacious'
+          ? 0
+          : plan.motifFamily === 'restless'
+            ? (noteIndex % 2 === 0 ? 1 : -1)
+            : noteIndex % 2 === 0 ? 2 : 1
+      ),
       length: note.length * (noteIndex === coreMotif.length - 1 ? 1.28 : 0.92),
     }))
     const turnMotif = coreMotif
       .filter((_, noteIndex) => noteIndex % 2 === 0)
       .map((note, noteIndex) => ({ ...note, at: note.at + 0.12, degree: note.degree - (noteIndex === 0 ? 1 : 0), length: note.length * 1.2 }))
     const motif = isOutro
-      ? [{ at: 0.35, degree: 4, length: 0.7 }, { at: 1.45, degree: 2, length: 0.72 }, { at: 2.62, degree: 0, length: 1.7 }]
+      ? cadence.outro
       : isCadenceBar
-        ? [{ at: 0, degree: 4, length: 0.78 }, { at: 1.05, degree: 2, length: 0.62 }, { at: 2.05, degree: 1, length: 0.62 }, { at: 3.05, degree: 0, length: 1.2 }]
+        ? cadence.approach
         : isClimax
           ? liftedMotif
           : isTurn
@@ -966,16 +1197,16 @@ function scheduleComposition(
       const timing = isOutro ? 0 : (seededUnit(seed, barIndex * 43 + noteIndex) - 0.5) * 0.042
       const noteStart = Math.max(barStart, barStart + note.at * beat + timing)
       const velocity = 0.91 + seededUnit(seed ^ 0x71c3, barIndex * 47 + noteIndex) * 0.17
-      const octave = leadOctave + (isClimax && noteIndex === 2 && arrangement.lead !== 'pluck' && result.analysis.valence >= -0.1 ? 1 : 0)
+      const octave = leadOctave + (isClimax && noteIndex === 2 && plan.lead !== 'guitar' && result.analysis.valence >= -0.1 ? 1 : 0)
       const frequency = noteFrequency(root, degreeSemitone(scale, note.degree), octave)
       const pan = noteIndex % 2 ? 0.1 : -0.1
-      const leadVolume = (arrangement.lead === 'piano' ? 0.048 : arrangement.lead === 'pluck' ? 0.044 : 0.036)
+      const leadVolume = (plan.lead === 'piano' ? 0.048 : plan.lead === 'guitar' ? 0.044 : 0.036)
         * dynamics * velocity
       scheduleLead(frequency, noteStart, beat * note.length, leadVolume, pan)
 
       if (isClimax && (noteIndex === 0 || noteIndex === 2)) {
         const harmonyFrequency = noteFrequency(root, degreeSemitone(scale, note.degree - 2), octave)
-        if (arrangement.lead === 'pluck') {
+        if (plan.lead === 'guitar') {
           scheduleAcousticPiano(context, buses, sampleBank, harmonyFrequency, noteStart + 0.018, beat * note.length * 0.92, 0.014 * dynamics, -pan * 1.7)
         } else {
           scheduleAcousticGuitar(context, buses, sampleBank, harmonyFrequency, noteStart + 0.018, beat * note.length * 0.88, 0.016 * dynamics, -pan * 1.7)
@@ -987,15 +1218,23 @@ function scheduleComposition(
       const counterDegree = chordRoot + (barIndex % 2 === 0 ? 4 : 2)
       const counterFrequency = noteFrequency(root, degreeSemitone(scale, counterDegree), -1)
       const counterStart = barStart + beat * (barIndex % 2 === 0 ? 1.45 : 2.25)
-      if (arrangement.lead === 'piano') {
+      if (plan.lead === 'piano') {
         scheduleAcousticGuitar(context, buses, sampleBank, counterFrequency, counterStart, beat * 1.25, 0.019, 0.34)
       } else {
         scheduleAcousticPiano(context, buses, sampleBank, counterFrequency, counterStart, beat * 1.4, 0.017, 0.34)
       }
     }
 
-    if (arrangement.percussion !== 'none' && !isIntro && !isOutro && !isTurn) {
-      const full = arrangement.percussion === 'full'
+    if (plan.percussion === 'restless' && !isIntro && !isOutro && !isTurn) {
+      const drumOffsets = isClimax ? [0, 1.35, 2.48, 3.22] : [0, 1.62, 2.86]
+      drumOffsets.forEach((offset, index) => {
+        scheduleFrameDrum(context, buses, sampleBank, barStart + beat * offset, index !== 1 ? 0.088 : 0.058, index % 2 === 1)
+      })
+      scheduleRecordedWoodblock(context, buses, sampleBank, barStart + beat * 0.78, 0.017, -0.18)
+      scheduleRecordedWoodblock(context, buses, sampleBank, barStart + beat * 2.18, 0.019, 0.18)
+      if (isClimax) scheduleRecordedWoodblock(context, buses, sampleBank, barStart + beat * 3.54, 0.016, -0.08)
+    } else if (plan.percussion !== 'none' && !isIntro && !isOutro && !isTurn) {
+      const full = plan.percussion === 'full'
       if (full || isClimax) scheduleFrameDrum(context, buses, sampleBank, barStart, full ? 0.104 : 0.058)
       if (isClimax || (full && barIndex % 2 === 0)) scheduleFrameDrum(context, buses, sampleBank, barStart + beat * 2, full ? 0.08 : 0.044, true)
       if (full) {
@@ -1005,7 +1244,7 @@ function scheduleComposition(
         scheduleRecordedShaker(context, buses, sampleBank, barStart + beat, 0.012, false, -0.18)
         scheduleRecordedShaker(context, buses, sampleBank, barStart + beat * 3, 0.01, true, 0.18)
       }
-      if (full && (isClimax || isJoyful)) {
+      if (full && (isClimax || plan.mood === 'joyful')) {
         const shakerSteps = isClimax ? 8 : 4
         for (let step = 0; step < shakerSteps; step += 1) {
           scheduleRecordedShaker(
@@ -1019,7 +1258,7 @@ function scheduleComposition(
           )
         }
       }
-    } else if (shouldUseRestrainedShaker(result, arrangement) && isClimax) {
+    } else if (shouldUseRestrainedShaker(result, plan) && isClimax) {
       scheduleRecordedShaker(context, buses, sampleBank, barStart + beat * 1.02, 0.011, false, -0.28)
       scheduleRecordedShaker(context, buses, sampleBank, barStart + beat * 3.02, 0.009, true, 0.28)
     }

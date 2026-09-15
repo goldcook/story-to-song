@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
-import { getArrangementTracks, getSongPreviewDuration, playSongPreview, preloadAudioSamples } from './lib/audioEngine'
+import { getArrangementTracks, getCompositionPlan, getSongPreviewDuration, playSongPreview, preloadAudioSamples } from './lib/audioEngine'
 import { assessStorySafety, generateSong, getAlternateTitle, samples } from './lib/storyEngine'
 import {
   createShareUrl,
@@ -322,6 +322,7 @@ function App() {
   const careNoticeRef = useRef<HTMLDivElement | null>(null)
   const previewDuration = result ? getSongPreviewDuration(result.mood.tempo) : 0
   const arrangementTracks = result ? getArrangementTracks(result) : []
+  const compositionPlan = result ? getCompositionPlan(result) : null
   const draftTracks = draftResult ? getArrangementTracks(draftResult) : []
   const dimensionSpectrum = result ? getStrongestDimensions(result) : []
   const draftDimensions = draftResult ? getStrongestDimensions(draftResult, 3) : []
@@ -1156,7 +1157,7 @@ function App() {
                 <div className="tab-panel notes-panel" id="record-panel-notes" role="tabpanel" aria-labelledby="record-tab-notes">
                   <div className="producer-note">
                     <span className="section-label">PRODUCER'S NOTE · 制作手记</span>
-                    <h3>为什么它听起来像<br />{result.mood.description}</h3>
+                    <h3>为什么它听起来像<br />{compositionPlan?.character ?? result.mood.description}</h3>
                     <p>{result.analysis.summary} 最终以{arrangementTracks.slice(0, 4).map((track) => track.label).join('、')}为骨架，把这些情绪放进同一段旋律，而不是只套用一个情绪标签。</p>
                   </div>
                   <div className="music-dna production-data">
