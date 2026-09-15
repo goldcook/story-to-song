@@ -63,6 +63,7 @@ describe('emotion-specific composition plans', () => {
     expect(grief).toMatchObject({ motifFamily: 'descending', cadence: 'unresolved', harmony: 'cello', bass: 'cello' })
     expect(tension).toMatchObject({ motifFamily: 'restless', cadence: 'suspended', percussion: 'restless' })
     expect(calm).toMatchObject({ motifFamily: 'spacious', cadence: 'resting', lead: 'clarinet', bass: 'none' })
-    expect(tender).toMatchObject({ motifFamily: 'gentle', cadence: 'warm', harmony: 'piano', bass: 'none' })
+    expect(tender).toMatchObject({ motifFamily: 'gentle', cadence: 'warm', bass: 'none' })
+    expect([tender.lead, tender.harmony]).toEqual(expect.arrayContaining(['guitar', 'piano']))
   })
 })

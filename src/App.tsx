@@ -17,7 +17,12 @@ type View = 'compose' | 'creating' | 'result'
 type ResultTab = 'sleeve' | 'sound' | 'notes'
 type PlaybackState = 'idle' | 'loading' | 'playing' | 'error'
 const RESULT_TABS: Array<[ResultTab, string]> = [['sleeve', '唱片内页'], ['sound', '声音设计'], ['notes', '制作手记']]
-const CREATION_STATUS = ['正在理解故事的情绪曲线', '正在写主题动机与回应旋律', '正在安排真实乐器与声部', '正在完成混音与唱片母带', '私人唱片已经刻好']
+const CREATION_STATUS = ['正在理解故事的情绪曲线', '正在寻找贴合故事的旋律走向', '正在组织音色与声部层次', '正在完成混音与唱片母带', '私人唱片已经刻好']
+const DEVELOPMENT_STYLE_COPY = {
+  echo: '以回声式回应保留余韵',
+  answer: '以一问一答向前发展',
+  expansion: '从主题逐步展开',
+}
 const DIMENSION_LABELS: Record<keyof StoryEmotionDimensions, string> = {
   joy: '喜悦',
   grief: '失落',
@@ -935,8 +940,8 @@ function App() {
           <div className="creating-steps">
             {[
               draftResult ? `读出 ${draftDimensions.map(([key]) => DIMENSION_LABELS[key]).join('、')}` : '理解这段故事的情绪曲线',
-              draftResult ? `把 ${draftResult.keywords.slice(0, 2).join('与')}写进主题` : '写下可以被记住的主题旋律',
-              draftResult ? `安排 ${draftTracks.length} 层真实声音` : '安排真实乐器与声部层次',
+              draftResult ? '寻找最贴合这段故事的旋律走向' : '寻找贴合故事的旋律走向',
+              draftResult ? `安排 ${draftTracks.length} 层声音` : '组织音色与声部层次',
               '混音、收束，并刻下这张唱片',
             ].map((label, index) => (
               <div className={creatingStep > index ? 'complete' : creatingStep === index ? 'active' : ''} key={label}>
@@ -990,7 +995,7 @@ function App() {
               <div className="player-meta" aria-live="polite">
                 <span>
                   {isAudioLoading
-                    ? '正在准备真实乐器…'
+                    ? '正在准备乐器音色…'
                     : playbackState === 'error'
                       ? '声音加载失败，点此重试'
                       : isPlaying
@@ -1158,7 +1163,7 @@ function App() {
                   <div className="producer-note">
                     <span className="section-label">PRODUCER'S NOTE · 制作手记</span>
                     <h3>为什么它听起来像<br />{compositionPlan?.character ?? result.mood.description}</h3>
-                    <p>{result.analysis.summary} 最终以{arrangementTracks.slice(0, 4).map((track) => track.label).join('、')}为骨架，把这些情绪放进同一段旋律，而不是只套用一个情绪标签。</p>
+                    <p>{result.analysis.summary} 旋律{compositionPlan ? DEVELOPMENT_STYLE_COPY[compositionPlan.developmentStyle] : '采用贴合故事的走向'}，再以{arrangementTracks.slice(0, 4).map((track) => track.label).join('、')}为骨架完成这一版。</p>
                   </div>
                   <div className="music-dna production-data">
                     <span className="section-label">折叠在唱片背面的制作参数</span>
@@ -1278,7 +1283,7 @@ function App() {
                   </strong>
                   <small>
                     {shareState === 'preparing'
-                      ? '首次导出真实乐器音轨可能需要几秒'
+                      ? '首次导出完整音轨可能需要几秒'
                       : shareState === 'partial'
                         ? '海报仍可在上方单独导出'
                         : '单个 ZIP，含封面、海报、WAV 音乐与作品信息'}

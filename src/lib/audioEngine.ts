@@ -1,5 +1,12 @@
 import type { MoodId, SongResult } from '../types'
 import { hasAffirmedStoryTerm } from './storyEngine'
+import {
+  getStoryTasteTarget,
+  scoreTasteFit,
+  type DevelopmentStyle,
+  type MusicTasteVector,
+  type TextureStyle,
+} from './musicTaste'
 
 const NOTE_FREQUENCIES: Record<string, number> = {
   C: 261.63,
@@ -89,31 +96,57 @@ export interface CompositionPlan {
   cadence: CadenceStyle
   progression: number[]
   arc: CompositionSection[]
+  motifIndex: number
+  developmentStyle: DevelopmentStyle
+  textureStyle: TextureStyle
   leadOctave: number
   arpeggioSteps: number
   reverbSeconds: number
   reverbLevel: number
   reverbLowpass: number
   dynamics: Record<CompositionSection, number>
+  candidateCount: number
+  qualityScore: number
 }
 
-const ARRANGEMENTS: Record<MoodId, Arrangement> = {
-  nostalgic: { lead: 'guitar', harmony: 'cello', bass: 'cello', percussion: 'soft' },
-  joyful: { lead: 'guitar', harmony: 'piano', bass: 'none', percussion: 'full' },
-  melancholy: { lead: 'piano', harmony: 'cello', bass: 'cello', percussion: 'none' },
-  hopeful: { lead: 'piano', harmony: 'guitar', bass: 'piano', percussion: 'soft' },
-  tense: { lead: 'guitar', harmony: 'piano', bass: 'cello', percussion: 'restless' },
-  tender: { lead: 'guitar', harmony: 'piano', bass: 'none', percussion: 'none' },
-  calm: { lead: 'clarinet', harmony: 'guitar', bass: 'none', percussion: 'none' },
+const ARRANGEMENT_BANKS: Record<MoodId, Arrangement[]> = {
+  nostalgic: [
+    { lead: 'guitar', harmony: 'cello', bass: 'cello', percussion: 'soft' },
+    { lead: 'piano', harmony: 'guitar', bass: 'cello', percussion: 'soft' },
+  ],
+  joyful: [
+    { lead: 'guitar', harmony: 'piano', bass: 'none', percussion: 'full' },
+    { lead: 'piano', harmony: 'guitar', bass: 'none', percussion: 'full' },
+  ],
+  melancholy: [
+    { lead: 'piano', harmony: 'cello', bass: 'cello', percussion: 'none' },
+    { lead: 'guitar', harmony: 'cello', bass: 'cello', percussion: 'none' },
+  ],
+  hopeful: [
+    { lead: 'piano', harmony: 'guitar', bass: 'piano', percussion: 'soft' },
+    { lead: 'guitar', harmony: 'piano', bass: 'piano', percussion: 'soft' },
+    { lead: 'piano', harmony: 'cello', bass: 'cello', percussion: 'soft' },
+  ],
+  tense: [
+    { lead: 'guitar', harmony: 'piano', bass: 'cello', percussion: 'restless' },
+    { lead: 'piano', harmony: 'cello', bass: 'cello', percussion: 'restless' },
+  ],
+  tender: [
+    { lead: 'guitar', harmony: 'piano', bass: 'none', percussion: 'none' },
+    { lead: 'piano', harmony: 'guitar', bass: 'none', percussion: 'none' },
+  ],
+  calm: [
+    { lead: 'clarinet', harmony: 'guitar', bass: 'none', percussion: 'none' },
+    { lead: 'guitar', harmony: 'piano', bass: 'none', percussion: 'none' },
+  ],
 }
 
-function getArrangement(result: SongResult): Arrangement {
-  const base = ARRANGEMENTS[result.mood.id]
-  const { dimensions } = result.analysis
-  if (result.mood.id === 'hopeful' && dimensions.grief > 0.58) {
-    return { ...base, harmony: 'cello' }
+function getArrangementBank(result: SongResult) {
+  const bank = ARRANGEMENT_BANKS[result.mood.id]
+  if (result.mood.id === 'hopeful' && result.analysis.dimensions.grief > 0.58) {
+    return [bank[2], bank[0]]
   }
-  return base
+  return bank.filter(Boolean)
 }
 
 const PROGRESSION_BANKS: Record<MoodId, number[][]> = {
@@ -127,13 +160,13 @@ const PROGRESSION_BANKS: Record<MoodId, number[][]> = {
 }
 
 const PLAN_CHARACTER: Record<MoodId, string> = {
-  nostalgic: '旧照片般的木吉他与弓弦回望',
-  joyful: '短促跳跃的原声拨弦与明亮重拍',
+  nostalgic: '旧照片般的回望与弓弦余韵',
+  joyful: '短促跳跃的旋律与明亮重拍',
   melancholy: '缓慢下行的钢琴与低弓长线',
-  hopeful: '从低处逐步展开的钢琴与吉他',
+  hopeful: '从低处逐步展开的明亮主题',
   tense: '不规则木质脉冲与悬而未决的低音',
-  tender: '近距离的指弹与柔软钢琴回应',
-  calm: '有呼吸间隔的单簧管与开放拨弦',
+  tender: '近距离的旋律与柔软回应',
+  calm: '有呼吸间隔的旋律与开放拨弦',
 }
 
 const MOTIF_FAMILIES: Record<MoodId, MotifFamily> = {
@@ -146,14 +179,14 @@ const MOTIF_FAMILIES: Record<MoodId, MotifFamily> = {
   calm: 'spacious',
 }
 
-const CADENCES: Record<MoodId, CadenceStyle> = {
-  nostalgic: 'remembered',
-  joyful: 'lifted',
-  melancholy: 'unresolved',
-  hopeful: 'ascending',
-  tense: 'suspended',
-  tender: 'warm',
-  calm: 'resting',
+const CADENCE_BANKS: Record<MoodId, CadenceStyle[]> = {
+  nostalgic: ['remembered', 'warm'],
+  joyful: ['lifted', 'ascending'],
+  melancholy: ['unresolved', 'remembered'],
+  hopeful: ['ascending', 'lifted'],
+  tense: ['suspended', 'unresolved'],
+  tender: ['warm'],
+  calm: ['resting'],
 }
 
 const PLAN_DYNAMICS: Record<MoodId, Record<CompositionSection, number>> = {
@@ -164,6 +197,22 @@ const PLAN_DYNAMICS: Record<MoodId, Record<CompositionSection, number>> = {
   tense: { intro: 0.62, development: 0.9, turn: 0.5, climax: 1.14, outro: 0.44 },
   tender: { intro: 0.46, development: 0.64, turn: 0.55, climax: 0.76, outro: 0.5 },
   calm: { intro: 0.38, development: 0.5, turn: 0.42, climax: 0.58, outro: 0.4 },
+}
+
+const COMPOSITION_PLAN_CACHE = new WeakMap<SongResult, CompositionPlan>()
+
+interface TextureProfile {
+  arpeggioDelta: number
+  dynamicScale: number
+  reverbSecondsDelta: number
+  reverbLevelDelta: number
+  reverbLowpassDelta: number
+}
+
+const TEXTURE_PROFILES: Record<TextureStyle, TextureProfile> = {
+  intimate: { arpeggioDelta: -2, dynamicScale: 0.68, reverbSecondsDelta: -0.18, reverbLevelDelta: -0.04, reverbLowpassDelta: -520 },
+  flowing: { arpeggioDelta: 0, dynamicScale: 1, reverbSecondsDelta: 0, reverbLevelDelta: 0, reverbLowpassDelta: 0 },
+  driving: { arpeggioDelta: 2, dynamicScale: 1.34, reverbSecondsDelta: -0.12, reverbLevelDelta: -0.02, reverbLowpassDelta: 620 },
 }
 
 const SAMPLE_DEFINITIONS: SampleDefinition[] = [
@@ -336,7 +385,7 @@ export function getArrangementTracks(result: SongResult): ArrangementTrack[] {
   }
   if (result.analysis.dimensions.openness > 0.34) tracks.push({ id: 'openness', label: '开阔吉他泛音', role: '自由与远方' })
   if (result.analysis.dimensions.isolation > 0.46) tracks.push({ id: 'silence', label: '低音留白', role: '孤独与停顿' })
-  if (shouldUseRestrainedShaker(result, getArrangement(result))) tracks.push({ id: 'brush', label: '实录细沙锤', role: '克制律动' })
+  if (shouldUseRestrainedShaker(result, plan)) tracks.push({ id: 'brush', label: '实录细沙锤', role: '克制律动' })
   return tracks
 }
 
@@ -448,6 +497,195 @@ const CADENCE_MOTIFS: Record<CadenceStyle, { approach: MotifNote[]; outro: Motif
   },
 }
 
+interface ScoredCompositionCandidate {
+  arrangementIndex: number
+  progressionIndex: number
+  motifIndex: number
+  developmentStyle: DevelopmentStyle
+  textureStyle: TextureStyle
+  cadence: CadenceStyle
+  score: number
+}
+
+const DEVELOPMENT_STYLES: DevelopmentStyle[] = ['echo', 'answer', 'expansion']
+const TEXTURE_STYLES: TextureStyle[] = ['intimate', 'flowing', 'driving']
+
+function average(values: number[]) {
+  return values.reduce((total, value) => total + value, 0) / Math.max(1, values.length)
+}
+
+function getTexturedDynamics(
+  dynamics: Record<CompositionSection, number>,
+  textureStyle: TextureStyle,
+) {
+  const values = Object.values(dynamics)
+  const center = average(values)
+  const scale = TEXTURE_PROFILES[textureStyle].dynamicScale
+  return Object.fromEntries(
+    Object.entries(dynamics).map(([section, value]) => [
+      section,
+      clamp(center + (value - center) * scale, 0.28, 1.16),
+    ]),
+  ) as Record<CompositionSection, number>
+}
+
+function getCandidateVector(
+  result: SongResult,
+  arrangement: Arrangement,
+  progression: number[],
+  motif: MotifNote[],
+  cadence: CadenceStyle,
+  developmentStyle: DevelopmentStyle,
+  arpeggioSteps: number,
+  reverbLowpass: number,
+  dynamics: Record<CompositionSection, number>,
+): MusicTasteVector {
+  const degrees = motif.map((note) => note.degree)
+  const intervals = degrees.slice(1).map((degree, index) => degree - degrees[index])
+  const rhythmActivity = arrangement.percussion === 'full'
+    ? 0.82
+    : arrangement.percussion === 'restless'
+      ? 0.94
+      : arrangement.percussion === 'soft' ? 0.38 : 0.1
+  const offBeatRatio = motif.filter((note) => Math.abs(note.at - Math.round(note.at)) > 0.2).length / motif.length
+  const instrumentBrightness = {
+    piano: 0.65,
+    guitar: 0.78,
+    clarinet: 0.52,
+    cello: 0.26,
+  }
+  const cadenceClosure: Record<CadenceStyle, number> = {
+    remembered: 0.72,
+    lifted: 0.98,
+    unresolved: 0.46,
+    ascending: 0.94,
+    suspended: 0.08,
+    warm: 0.88,
+    resting: 0.92,
+  }
+  const cadenceTension: Record<CadenceStyle, number> = {
+    remembered: 0.28,
+    lifted: 0.12,
+    unresolved: 0.48,
+    ascending: 0.16,
+    suspended: 0.96,
+    warm: 0.1,
+    resting: 0.06,
+  }
+  const harmonicDistances = progression.slice(1).map((degree, index) => {
+    const difference = Math.abs(degree - progression[index])
+    const scaleLength = SCALE_STEPS[result.mood.scale].length
+    return Math.min(difference, scaleLength - difference)
+  })
+  const maximumDegree = Math.max(...degrees)
+  const minimumDegree = Math.min(...degrees)
+  const averageLength = average(motif.map((note) => note.length))
+  const dynamicValues = Object.values(dynamics)
+  const variationAdjustments: Record<DevelopmentStyle, Partial<MusicTasteVector>> = {
+    echo: { density: -0.03, syncopation: -0.02, sustain: 0.08, closure: 0.03 },
+    answer: { density: 0.04, syncopation: 0.12, upwardContour: -0.04, tension: 0.06 },
+    expansion: { density: 0.06, upwardContour: 0.14, pitchRange: 0.12, dynamicContrast: 0.08 },
+  }
+  const variation = variationAdjustments[developmentStyle]
+  const baseVector: MusicTasteVector = {
+    density: clamp(motif.length / 7 * 0.58 + arpeggioSteps / 8 * 0.42, 0, 1),
+    syncopation: clamp(rhythmActivity * 0.72 + offBeatRatio * 0.28, 0, 1),
+    upwardContour: clamp(0.5 + (degrees.at(-1)! - degrees[0]) / 12, 0, 1),
+    pitchRange: clamp((maximumDegree - minimumDegree) / 7, 0, 1),
+    sustain: clamp(averageLength / 1.05, 0, 1),
+    harmonicMotion: clamp(average(harmonicDistances) / 3.2, 0, 1),
+    brightness: clamp(
+      instrumentBrightness[arrangement.lead] * 0.48
+        + instrumentBrightness[arrangement.harmony] * 0.28
+        + (reverbLowpass - 3600) / 5000 * 0.16
+        + (arrangement.bass === 'cello' ? 0 : 0.08),
+      0,
+      1,
+    ),
+    tension: clamp(
+      cadenceTension[cadence] * 0.62
+        + (result.mood.scale === 'minor' ? 0.12 : 0)
+        + average(intervals.map((interval) => Math.min(1, Math.abs(interval) / 5))) * 0.26,
+      0,
+      1,
+    ),
+    closure: cadenceClosure[cadence],
+    dynamicContrast: clamp((Math.max(...dynamicValues) - Math.min(...dynamicValues)) / 0.82, 0, 1),
+  }
+  return Object.fromEntries(
+    Object.entries(baseVector).map(([key, value]) => [
+      key,
+      clamp(value + (variation[key as keyof MusicTasteVector] ?? 0), 0, 1),
+    ]),
+  ) as unknown as MusicTasteVector
+}
+
+function getMelodicClichePenalty(motif: MotifNote[]) {
+  const intervals = motif.slice(1).map((note, index) => note.degree - motif[index].degree)
+  const fingerprint = intervals.join(',')
+  const commonFragments = ['1,1,1', '2,2,2', '2,-2,2', '1,-1,1', '-1,-1,-1']
+  const familiar = commonFragments.some((fragment) => fingerprint.includes(fragment)) ? 0.12 : 0
+  const uniqueIntervals = new Set(intervals).size / Math.max(1, intervals.length)
+  const repetitive = uniqueIntervals < 0.42 ? 0.1 : 0
+  const excessiveLeaps = intervals.filter((interval) => Math.abs(interval) > 4).length / Math.max(1, intervals.length) * 0.08
+  return familiar + repetitive + excessiveLeaps
+}
+
+function selectCompositionCandidate(
+  result: SongResult,
+  baseArpeggioSteps: number,
+  baseReverbLowpass: number,
+) {
+  const motifFamily = MOTIF_FAMILIES[result.mood.id]
+  const motifBank = MOTIF_BANKS[motifFamily]
+  const progressionBank = PROGRESSION_BANKS[result.mood.id]
+  const arrangementBank = getArrangementBank(result)
+  const cadenceBank = CADENCE_BANKS[result.mood.id]
+  const target = getStoryTasteTarget(result.mood.id, result.analysis)
+  const candidates: ScoredCompositionCandidate[] = []
+
+  arrangementBank.forEach((arrangement, arrangementIndex) => {
+    progressionBank.forEach((progression, progressionIndex) => {
+      motifBank.forEach((motif, motifIndex) => {
+        DEVELOPMENT_STYLES.forEach((developmentStyle) => {
+          TEXTURE_STYLES.forEach((textureStyle) => {
+            cadenceBank.forEach((cadence) => {
+              const texture = TEXTURE_PROFILES[textureStyle]
+              const arpeggioSteps = clamp(baseArpeggioSteps + texture.arpeggioDelta, 2, 8)
+              const reverbLowpass = clamp(baseReverbLowpass + texture.reverbLowpassDelta, 2800, 9200)
+              const dynamics = getTexturedDynamics(PLAN_DYNAMICS[result.mood.id], textureStyle)
+              const vector = getCandidateVector(
+                result,
+                arrangement,
+                progression,
+                motif,
+                cadence,
+                developmentStyle,
+                arpeggioSteps,
+                reverbLowpass,
+                dynamics,
+              )
+              const score = scoreTasteFit(vector, target) - getMelodicClichePenalty(motif)
+              candidates.push({
+                arrangementIndex,
+                progressionIndex,
+                motifIndex,
+                developmentStyle,
+                textureStyle,
+                cadence,
+                score,
+              })
+            })
+          })
+        })
+      })
+    })
+  })
+
+  candidates.sort((a, b) => b.score - a.score)
+  return { selected: candidates[0], candidateCount: candidates.length }
+}
+
 export function getCompositionArc(tempo: number, shortIntro = false): CompositionSection[] {
   const bars = previewBars(tempo)
   const introBars = shortIntro ? 1 : bars >= 10 ? 2 : 1
@@ -483,9 +721,9 @@ function getMoodCompositionArc(tempo: number, mood: MoodId) {
 }
 
 export function getCompositionPlan(result: SongResult): CompositionPlan {
-  const seed = storySeed(result.story)
+  const cached = COMPOSITION_PLAN_CACHE.get(result)
+  if (cached) return cached
   const mood = result.mood.id
-  const arrangement = getArrangement(result)
   const reverb = {
     nostalgic: [1.3, 0.16, 4700],
     joyful: [0.78, 0.08, 7800],
@@ -509,23 +747,34 @@ export function getCompositionPlan(result: SongResult): CompositionPlan {
     : mood === 'melancholy' && result.analysis.dimensions.grief + result.analysis.dimensions.isolation > 0.72
       ? -1
       : 0
-  const [reverbSeconds, reverbLevel, reverbLowpass] = reverb[mood]
+  const [baseReverbSeconds, baseReverbLevel, baseReverbLowpass] = reverb[mood]
   const progressionBank = PROGRESSION_BANKS[mood]
-  return {
+  const arrangementBank = getArrangementBank(result)
+  const candidateResult = selectCompositionCandidate(result, arpeggioSteps[mood], baseReverbLowpass)
+  const { selected } = candidateResult
+  const texture = TEXTURE_PROFILES[selected.textureStyle]
+  const plan: CompositionPlan = {
     mood,
     character: PLAN_CHARACTER[mood],
-    ...arrangement,
+    ...arrangementBank[selected.arrangementIndex],
     motifFamily: MOTIF_FAMILIES[mood],
-    cadence: CADENCES[mood],
-    progression: progressionBank[seed % progressionBank.length],
+    cadence: selected.cadence,
+    progression: progressionBank[selected.progressionIndex],
     arc: getMoodCompositionArc(result.mood.tempo, mood),
+    motifIndex: selected.motifIndex,
+    developmentStyle: selected.developmentStyle,
+    textureStyle: selected.textureStyle,
     leadOctave,
-    arpeggioSteps: arpeggioSteps[mood],
-    reverbSeconds,
-    reverbLevel,
-    reverbLowpass,
-    dynamics: PLAN_DYNAMICS[mood],
+    arpeggioSteps: clamp(arpeggioSteps[mood] + texture.arpeggioDelta, 2, 8),
+    reverbSeconds: clamp(baseReverbSeconds + texture.reverbSecondsDelta, 0.5, 2),
+    reverbLevel: clamp(baseReverbLevel + texture.reverbLevelDelta, 0.04, 0.24),
+    reverbLowpass: clamp(baseReverbLowpass + texture.reverbLowpassDelta, 2800, 9200),
+    dynamics: getTexturedDynamics(PLAN_DYNAMICS[mood], selected.textureStyle),
+    candidateCount: candidateResult.candidateCount,
+    qualityScore: Math.round(clamp(selected.score, 0, 1) * 100),
   }
+  COMPOSITION_PLAN_CACHE.set(result, plan)
+  return plan
 }
 
 function normalizedDegree(degree: number, scaleLength: number) {
@@ -1003,8 +1252,7 @@ function scheduleComposition(
   const progression = plan.progression
   const arc = plan.arc
   const motifTemplates = MOTIF_BANKS[plan.motifFamily]
-  const baseMotif = seed % motifTemplates.length
-  const coreMotif = motifTemplates[baseMotif]
+  const coreMotif = motifTemplates[plan.motifIndex]
   const leadOctave = plan.leadOctave
   const spaciousness = result.analysis.dimensions.openness
   const sparseness = clamp(
@@ -1160,11 +1408,28 @@ function scheduleComposition(
 
     const isCadenceBar = barIndex === outroIndex - 1
     const developmentBar = Math.max(0, barIndex - introBars)
-    const developedMotif = coreMotif.map((note, noteIndex) => ({
-      ...note,
-      degree: note.degree + (noteIndex === coreMotif.length - 1 ? (seed % 2 === 0 ? 1 : -1) : 0),
-      at: note.at + (noteIndex === 0 ? 0.28 : 0),
-    }))
+    const developedMotif = coreMotif.map((note, noteIndex) => {
+      if (plan.developmentStyle === 'answer') {
+        return {
+          ...note,
+          degree: note.degree + (noteIndex % 2 === 0 ? 1 : -1),
+          at: note.at + (noteIndex === 0 ? 0.18 : 0),
+        }
+      }
+      if (plan.developmentStyle === 'expansion') {
+        return {
+          ...note,
+          degree: note.degree + Math.floor(noteIndex / 2),
+          length: note.length * (noteIndex === coreMotif.length - 1 ? 1.34 : 0.94),
+        }
+      }
+      return {
+        ...note,
+        degree: note.degree + (noteIndex === coreMotif.length - 1 ? (seed % 2 === 0 ? 1 : -1) : 0),
+        at: note.at + (noteIndex === 0 ? 0.28 : 0),
+        length: note.length * (noteIndex === coreMotif.length - 1 ? 1.12 : 1),
+      }
+    })
     const liftedMotif = coreMotif.map((note, noteIndex) => ({
       ...note,
       degree: note.degree + (

@@ -459,7 +459,7 @@ export async function createAlbumArchive(
     '',
     `可播放链接：${createShareUrl(result)}`,
     '',
-    '由叙音生成',
+    '由叙音为这段真实故事制作',
   ].join('\n'))
   const archive = zipSync(entries, { level: 0 })
   const archiveBuffer = archive.buffer.slice(archive.byteOffset, archive.byteOffset + archive.byteLength) as ArrayBuffer
