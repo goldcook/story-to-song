@@ -2,6 +2,7 @@ import type { MoodId, SongResult } from '../types'
 import { REFERENCE_NGRAM_HASHES, REFERENCE_SHAPE_FAMILIARITY } from './generated/referenceProfiles'
 import { hasAffirmedStoryTerm } from './storyEngine'
 import {
+  getNarrativeMusicSignals,
   getStoryTasteTarget,
   scoreTasteFit,
   type DevelopmentStyle,
@@ -850,6 +851,19 @@ function getTexturedDynamics(
   ) as Record<CompositionSection, number>
 }
 
+function getNarrativeDynamics(result: SongResult, textureStyle: TextureStyle) {
+  const dynamics = getTexturedDynamics(PLAN_DYNAMICS[result.mood.id], textureStyle)
+  const { emotionalContrast, release, fallingWeight, restraint } = getNarrativeMusicSignals(result.analysis)
+
+  return {
+    intro: clamp(dynamics.intro + restraint * 0.02 - release * 0.04, 0.28, 1.16),
+    development: clamp(dynamics.development + release * 0.02 + emotionalContrast * 0.015 - restraint * 0.02, 0.28, 1.16),
+    turn: clamp(dynamics.turn - release * 0.035 - fallingWeight * 0.025 - restraint * 0.02, 0.28, 1.16),
+    climax: clamp(dynamics.climax + release * 0.09 + emotionalContrast * 0.04 - restraint * 0.045, 0.28, 1.16),
+    outro: clamp(dynamics.outro + release * 0.11 - fallingWeight * 0.11 - emotionalContrast * 0.035, 0.28, 1.16),
+  }
+}
+
 function getCandidateVector(
   result: SongResult,
   arrangement: Arrangement,
@@ -979,7 +993,7 @@ function selectCompositionCandidate(
               const texture = TEXTURE_PROFILES[textureStyle]
               const arpeggioSteps = clamp(baseArpeggioSteps + texture.arpeggioDelta, 2, 8)
               const reverbLowpass = clamp(baseReverbLowpass + texture.reverbLowpassDelta, 2800, 9200)
-              const dynamics = getTexturedDynamics(PLAN_DYNAMICS[result.mood.id], textureStyle)
+              const dynamics = getNarrativeDynamics(result, textureStyle)
               const vector = getCandidateVector(
                 result,
                 arrangement,
@@ -1124,7 +1138,7 @@ export function getCompositionPlan(result: SongResult): CompositionPlan {
     reverbSeconds: clamp(baseReverbSeconds + texture.reverbSecondsDelta, 0.5, 2),
     reverbLevel: clamp(baseReverbLevel + texture.reverbLevelDelta, 0.04, 0.24),
     reverbLowpass: clamp(baseReverbLowpass + texture.reverbLowpassDelta, 2800, 9200),
-    dynamics: getTexturedDynamics(PLAN_DYNAMICS[mood], selected.textureStyle),
+    dynamics: getNarrativeDynamics(result, selected.textureStyle),
     candidateCount: candidateResult.candidateCount,
     eligibleCandidateCount: candidateResult.eligibleCandidateCount,
     rejectedCandidateCount: candidateResult.rejectedCandidateCount,

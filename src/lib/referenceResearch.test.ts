@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import analysis from '../../research/generated/reference-analysis.json'
+import listeningStudy from '../../research/real-song-listening-study.json'
 import priors from '../../research/composition-priors.json'
 import manifest from '../../research/references/manifest.json'
 import type { MoodId } from '../types'
@@ -27,6 +28,27 @@ describe('reproducible music reference layer', () => {
       expect(work.composerDied).toBeLessThanOrEqual(manifest.selectionPolicy.composerDeathCutoff)
       expect(work.scoreSha256).toMatch(/^[a-f0-9]{64}$/)
       expect(work.analysisSha256).toMatch(/^[a-f0-9]{64}$/)
+    })
+  })
+
+  it('keeps released-song listening notes qualitative and outside runtime data', () => {
+    expect(listeningStudy.method).toMatchObject({
+      usesLyrics: false,
+      downloadsAudio: false,
+      extractsMelody: false,
+      runtimeImported: false,
+    })
+    expect(listeningStudy.cases.length).toBeGreaterThanOrEqual(10)
+
+    const runtimeData = JSON.stringify({
+      metadata: REFERENCE_CORPUS_METADATA,
+      profiles: REFERENCE_TASTE_PROFILES,
+      exactHashes: REFERENCE_NGRAM_HASHES,
+      shapeHashes: REFERENCE_SHAPE_FAMILIARITY,
+    })
+    listeningStudy.cases.forEach((studyCase) => {
+      expect(studyCase.source).toMatch(/^https:\/\//)
+      expect(runtimeData).not.toContain(studyCase.work)
     })
   })
 

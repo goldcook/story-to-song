@@ -158,4 +158,18 @@ describe('seven-emotion validation matrix', () => {
       expect(Math.max(...distances), `${mood} variants should not all collapse`).toBeGreaterThan(0.01)
     })
   })
+
+  it('preserves high-arousal bittersweet tension instead of averaging it into mild sadness', () => {
+    const quietStory = prototypes.prototypes.find((prototype) => prototype.id === 'quiet-good-news')!
+    const mixedStory = prototypes.prototypes.find((prototype) => prototype.id === 'nervous-award-release')!
+    const quietResult = generateSong(quietStory.story)
+    const mixedResult = generateSong(mixedStory.story)
+    const quietTarget = getStoryTasteTarget(quietResult.mood.id, quietResult.analysis)
+    const mixedTarget = getStoryTasteTarget(mixedResult.mood.id, mixedResult.analysis)
+
+    expect([quietResult.mood.id, mixedResult.mood.id]).toEqual(['joyful', 'joyful'])
+    expect(mixedTarget.syncopation).toBeGreaterThan(quietTarget.syncopation)
+    expect(mixedTarget.tension).toBeGreaterThan(quietTarget.tension)
+    expect(mixedTarget.closure).toBeLessThan(quietTarget.closure)
+  })
 })

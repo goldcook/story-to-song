@@ -66,4 +66,22 @@ describe('emotion-specific composition plans', () => {
     expect(tender).toMatchObject({ motifFamily: 'gentle', cadence: 'warm', bass: 'none' })
     expect([tender.lead, tender.harmony]).toEqual(expect.arrayContaining(['guitar', 'piano']))
   })
+
+  it('shapes the dynamic ending from narrative direction within the same mood', () => {
+    const risingResult = generateSong('虽然害怕离开熟悉的城市，但第一次感到自由。天亮后，我决定重新出发。')
+    const steadyHopeResult = generateSong('我一直相信明天会好起来，也会慢慢照顾自己。')
+    const fallingResult = generateSong('我笑着说没关系，其实心里非常难过。')
+    const steadyGriefResult = generateSong('夜深后我想念已经离开的朋友，独自看着旧消息，心里一直很难过。')
+    const rising = getCompositionPlan(risingResult).dynamics
+    const steadyHope = getCompositionPlan(steadyHopeResult).dynamics
+    const falling = getCompositionPlan(fallingResult).dynamics
+    const steadyGrief = getCompositionPlan(steadyGriefResult).dynamics
+
+    expect([risingResult.mood.id, steadyHopeResult.mood.id]).toEqual(['hopeful', 'hopeful'])
+    expect([fallingResult.mood.id, steadyGriefResult.mood.id]).toEqual(['melancholy', 'melancholy'])
+    expect([risingResult.analysis.direction, fallingResult.analysis.direction]).toEqual(['rising', 'falling'])
+    expect(rising.outro - rising.intro).toBeGreaterThan(steadyHope.outro - steadyHope.intro)
+    expect(rising.climax - rising.turn).toBeGreaterThan(steadyHope.climax - steadyHope.turn)
+    expect(falling.outro - falling.intro).toBeLessThan(steadyGrief.outro - steadyGrief.intro)
+  })
 })

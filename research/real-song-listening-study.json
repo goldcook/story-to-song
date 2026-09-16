@@ -1,0 +1,170 @@
+{
+  "version": 1,
+  "updatedAt": "2026-09-16",
+  "method": {
+    "purpose": "Human-authored qualitative study of how released songs connect narrative meaning to musical treatment.",
+    "usesLyrics": false,
+    "downloadsAudio": false,
+    "extractsMelody": false,
+    "runtimeImported": false,
+    "boundary": "Only factual metadata, paraphrased narrative summaries, broad arrangement observations, and generalized design lessons are recorded. No lyric text, audio, score, chord transcription, or reusable note sequence is stored."
+  },
+  "cases": [
+    {
+      "id": "happy-minor-groove",
+      "work": "Happy",
+      "artist": "Pharrell Williams",
+      "narrativeSummary": "Direct celebration and embodied joy.",
+      "musicalTreatment": {
+        "mode": "F minor",
+        "tempoBpm": 160,
+        "texture": ["sparse Motown-influenced groove", "drums", "bass", "keyboard", "handclaps", "backing vocals"]
+      },
+      "lesson": "Joy does not require major mode. Fast pulse, short articulation, groove, claps, and communal voices can dominate the emotional reading.",
+      "source": "https://en.wikipedia.org/wiki/Happy_(Pharrell_Williams_song)"
+    },
+    {
+      "id": "major-key-heartbreak",
+      "work": "Someone like You",
+      "artist": "Adele",
+      "narrativeSummary": "A private confrontation with a former partner moving on.",
+      "musicalTreatment": {
+        "mode": "A major",
+        "tempoBpm": 67.5,
+        "texture": ["solo piano", "looping accompaniment", "sparse production", "exposed vocal arc"]
+      },
+      "lesson": "A major key can carry grief when tempo is slow, accompaniment is exposed, repetition feels inescapable, and the performance arc does the emotional work.",
+      "source": "https://en.wikipedia.org/wiki/Someone_like_You_(Adele_song)"
+    },
+    {
+      "id": "relief-through-accumulation",
+      "work": "Here Comes the Sun",
+      "artist": "The Beatles",
+      "narrativeSummary": "Relief after a long period of pressure, expressed through the return of spring.",
+      "musicalTreatment": {
+        "mode": "A major with pentatonic melody",
+        "tempoBpm": null,
+        "texture": ["acoustic guitar", "increasing vocal syncopation", "meter changes", "Moog counterline", "late orchestral expansion"]
+      },
+      "lesson": "Hope feels earned when motion and color accumulate gradually. A rising story benefits from a restrained opening, increasing rhythmic life, and a brighter counterline near the release.",
+      "source": "https://en.wikipedia.org/wiki/Here_Comes_the_Sun"
+    },
+    {
+      "id": "dark-story-lullaby-surface",
+      "work": "No Surprises",
+      "artist": "Radiohead",
+      "narrativeSummary": "Exhaustion, entrapment, and dissatisfaction are presented through a deliberately comforting surface.",
+      "musicalTreatment": {
+        "mode": "F major",
+        "tempoBpm": null,
+        "texture": ["very slow fragile delivery", "childlike guitar", "glockenspiel", "vocal harmonies", "lullaby-like chorus"]
+      },
+      "lesson": "Narrative and surface emotion can oppose each other. The contrast works only when the gentle texture remains fragile and unresolved rather than simply cheerful.",
+      "source": "https://en.wikipedia.org/wiki/No_Surprises"
+    },
+    {
+      "id": "sad-story-dance-pulse",
+      "work": "Dancing on My Own",
+      "artist": "Robyn",
+      "narrativeSummary": "Public isolation and rejection inside a crowded club.",
+      "musicalTreatment": {
+        "mode": "G-flat major",
+        "tempoBpm": 117,
+        "texture": ["relentless dance pulse", "staccato opening", "throbbing bass", "brief sad piano pause", "full-force return"]
+      },
+      "lesson": "Sadness can retain physical momentum. For high-arousal mixed emotion, keep the pulse but preserve tension, reduce harmonic closure, and create one exposed pause before returning.",
+      "source": "https://en.wikipedia.org/wiki/Dancing_on_My_Own"
+    },
+    {
+      "id": "cyclical-escape-story",
+      "work": "Fast Car",
+      "artist": "Tracy Chapman",
+      "narrativeSummary": "A working-class escape attempt gradually reveals another cycle of confinement.",
+      "musicalTreatment": {
+        "mode": "not recorded in this study",
+        "tempoBpm": null,
+        "texture": ["subtle folk-rock", "acoustic and electric guitar", "restrained rhythm section", "pedal steel"]
+      },
+      "lesson": "A story can begin with hope without earning a triumphant ending. Repetition, restrained growth, and reduced final closure are useful for narratives that circle back instead of resolving.",
+      "source": "https://en.wikipedia.org/wiki/Fast_Car"
+    },
+    {
+      "id": "familiar-context-inverted",
+      "work": "River",
+      "artist": "Joni Mitchell",
+      "narrativeSummary": "Displacement, regret, and a wish to escape the consequences of a broken relationship.",
+      "musicalTreatment": {
+        "mode": "C major frequently falling into A minor",
+        "tempoBpm": null,
+        "texture": ["solo piano", "fragile voice", "familiar seasonal contour reharmonized toward minor", "wandering dissonant outro"]
+      },
+      "lesson": "Contextual memory can deepen grief when familiar color is harmonically displaced. The product should use this as an abstract contrast principle, never copy a recognizable borrowed melody.",
+      "source": "https://en.wikipedia.org/wiki/River_(Joni_Mitchell_song)"
+    },
+    {
+      "id": "organic-release-climax",
+      "work": "Dog Days Are Over",
+      "artist": "Florence and the Machine",
+      "narrativeSummary": "Difficult times end and pent-up energy is released.",
+      "musicalTreatment": {
+        "mode": "not recorded in this study",
+        "tempoBpm": null,
+        "texture": ["harp", "piano", "wall percussion", "strings", "drums", "guitar", "expanding ensemble"]
+      },
+      "lesson": "Release can be communicated by adding human, imperfect layers and widening the ensemble toward the climax instead of relying on a synthetic riser or a sudden octave jump.",
+      "source": "https://en.wikipedia.org/wiki/Dog_Days_Are_Over"
+    },
+    {
+      "id": "arrangement-changes-meaning",
+      "work": "Mad World",
+      "artist": "Tears for Fears; Michael Andrews and Gary Jules",
+      "narrativeSummary": "Alienation and psychological pressure.",
+      "musicalTreatment": {
+        "mode": "not recorded in this study",
+        "tempoBpm": null,
+        "texture": ["original synth-pop with heavy percussion", "later cover with piano", "cello-like mellotron", "very light electric piano", "no drums"]
+      },
+      "lesson": "The same narrative can feel restless or devastated depending on instrumentation and density. Arrangement selection is part of semantic interpretation, not decoration after composition.",
+      "source": "https://en.wikipedia.org/wiki/Mad_World"
+    },
+    {
+      "id": "hope-against-context",
+      "work": "What a Wonderful World",
+      "artist": "Louis Armstrong",
+      "narrativeSummary": "A deliberate affirmation of shared beauty written against social turmoil.",
+      "musicalTreatment": {
+        "mode": "not recorded in this study",
+        "tempoBpm": null,
+        "texture": ["slow orchestral setting", "unhurried vocal", "warm ensemble support"]
+      },
+      "lesson": "Hope can gain weight from restraint. A positive story does not always need speed; warmth, spacious timing, and an assured ending can communicate mature optimism.",
+      "source": "https://en.wikipedia.org/wiki/What_a_Wonderful_World"
+    }
+  ],
+  "distilledPrinciples": [
+    {
+      "id": "mode-is-not-valence",
+      "rule": "Treat mode as one signal among tempo, articulation, groove, register, timbre, and closure. Never infer the whole emotion from major or minor alone."
+    },
+    {
+      "id": "arrangement-is-semantic",
+      "rule": "Choose density and instruments from narrative meaning before adding decorative layers. Sparse acoustic treatment and forceful rhythmic treatment can tell different truths about the same story."
+    },
+    {
+      "id": "mixed-emotion-keeps-contradiction",
+      "rule": "When positive and negative dimensions are both strong, preserve some brightness or pulse while increasing tension and reducing closure instead of averaging everything into mild sadness."
+    },
+    {
+      "id": "release-must-be-earned",
+      "rule": "For rising stories, build rhythmic activity, counterline, dynamics, and ensemble width gradually; do not fake a climax with an isolated octave jump."
+    },
+    {
+      "id": "falling-stories-do-not-auto-resolve",
+      "rule": "For falling or cyclical stories, let the outro lose energy or closure even if the opening contains hope."
+    },
+    {
+      "id": "quiet-stories-need-performance-space",
+      "rule": "Low-arousal confession benefits from fewer attacks, longer sustain, narrower range, and exposed acoustic timbre."
+    }
+  ]
+}

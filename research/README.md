@@ -28,6 +28,21 @@ explicitly marked `voice.vocals` plus the corpus's automatic Roman-numeral
 harmony analysis. Composer death dates are also checked against the manifest's
 conservative cutoff before any output is produced.
 
+### Released-song listening study
+
+`real-song-listening-study.json` records a separate, human-authored qualitative
+review of ten released songs. It is used to challenge simplistic assumptions
+such as "major means happy" or "sad stories must be slow" and to study broad
+relationships between narrative direction, pulse, articulation, arrangement,
+dynamic growth, and closure.
+
+This file stores titles, factual metadata, paraphrased story summaries, broad
+arrangement observations, generalized lessons, and public source links only.
+It contains no lyric text, audio, scores, chord transcriptions, or reusable
+melodic sequences, and it is never imported by the runtime. Its distilled
+principles are implemented as authored interaction rules, not as templates for
+imitating any named song.
+
 ## Measured observations
 
 Run `npm run research:music` to download the pinned files into the ignored
@@ -56,7 +71,11 @@ runtime scores combinations of original motif grammars, progressions,
 arrangements, cadences, development styles, and texture shapes. It rejects
 invalid timing, extreme range or leaps, repeated pitches, and excessive
 reference overlap; it then ranks the remaining candidates by taste fit,
-structural quality, and novelty.
+structural quality, and novelty. Interaction terms preserve mixed emotion rather
+than averaging it into a generic mood: rising stories earn a wider dynamic arc,
+falling stories lose final closure, high-arousal bittersweet stories can retain
+pulse while adding tension, and quiet confession becomes sparser and more
+sustained.
 
 Only aggregate feature values and opaque hashes of transposition-invariant
 three-note interval/rhythm windows found in at least two different reference
