@@ -106,6 +106,34 @@ describe('candidate novelty and musical quality', () => {
       expect(evaluation.hardPass, `${prototype.id}: ${evaluation.reasons.join(', ')}`).toBe(true)
       expect(evaluation.reasons, prototype.id).not.toContain('excessive-range')
       expect(evaluation.reasons, prototype.id).not.toContain('excessive-leaps')
+      expect(evaluation.reasons, prototype.id).not.toContain('phrase-repetition')
+      expect(evaluation.reasons, prototype.id).not.toContain('rigid-rhythm')
+      expect(evaluation.uniquePhraseRatio, prototype.id).toBeGreaterThanOrEqual(0.5)
+      expect(evaluation.rhythmDiversity, prototype.id).toBeGreaterThanOrEqual(0.42)
+      expect(evaluation.intentionalBreathCount, prototype.id).toBeGreaterThanOrEqual(2)
+      expect(evaluation.maxCrossBarLeap, prototype.id).toBeLessThanOrEqual(12)
+    })
+  })
+
+  it('renders expressive phrase variation deterministically from the story', () => {
+    prototypes.prototypes.forEach((prototype) => {
+      const result = generateSong(prototype.story)
+      const first = evaluateCompositionPlanMelody(result)
+      const second = evaluateCompositionPlanMelody(result)
+
+      expect(second.fingerprintKey, prototype.id).toBe(first.fingerprintKey)
+      expect(second.uniquePhraseRatio, prototype.id).toBe(first.uniquePhraseRatio)
+      expect(second.intentionalBreathCount, prototype.id).toBe(first.intentionalBreathCount)
+    })
+  })
+
+  it('does not give every story in one emotion the same rendered melody', () => {
+    MOODS.forEach((mood) => {
+      const fingerprints = prototypes.prototypes
+        .filter((prototype) => prototype.mood === mood)
+        .map((prototype) => evaluateCompositionPlanMelody(generateSong(prototype.story)).fingerprintKey)
+
+      expect(new Set(fingerprints).size, mood).toBeGreaterThan(1)
     })
   })
 })

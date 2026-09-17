@@ -430,10 +430,19 @@ function seededUnit(seed: number, index: number) {
   return (value >>> 0) / 0xffffffff
 }
 
+function storySeed(story: string) {
+  let seed = 0
+  for (let index = 0; index < story.length; index += 1) {
+    seed = (seed * 31 + story.charCodeAt(index)) >>> 0
+  }
+  return seed
+}
+
 export interface MotifNote {
   at: number
   degree: number
   length: number
+  accent?: number
 }
 
 const MOTIF_BANKS: Record<MotifFamily, MotifNote[][]> = {
@@ -663,6 +672,136 @@ function getLeadOctave(result: SongResult) {
   return 0
 }
 
+type PhraseGesture = 'invitation' | 'question' | 'answer' | 'breath' | 'surge' | 'lean' | 'release'
+
+const GESTURE_TIMING: Record<PhraseGesture, { delay: number; offsets: number[] }> = {
+  invitation: { delay: 0.12, offsets: [0, 0.08, -0.03, 0.06] },
+  question: { delay: 0.02, offsets: [0, 0.1, -0.05, 0.14, -0.02] },
+  answer: { delay: 0.28, offsets: [0.04, -0.06, 0.08, -0.02, 0.12] },
+  breath: { delay: 0.42, offsets: [0, 0.14, -0.02, 0.1] },
+  surge: { delay: 0.02, offsets: [-0.04, 0.08, -0.06, 0.12, -0.02] },
+  lean: { delay: 0.12, offsets: [0.04, -0.04, 0.1, -0.02] },
+  release: { delay: 0.26, offsets: [0, 0.1, -0.02, 0.08] },
+}
+
+function getPhraseGesture(
+  section: CompositionSection,
+  isCadenceBar: boolean,
+  developmentBar: number,
+): PhraseGesture {
+  if (section === 'outro') return 'release'
+  if (isCadenceBar) return 'lean'
+  if (section === 'intro') return 'invitation'
+  if (section === 'turn') return 'breath'
+  if (section === 'climax') return 'surge'
+  return developmentBar % 2 === 0 ? 'question' : 'answer'
+}
+
+function normalizePhraseNotes(notes: MotifNote[]) {
+  return [...notes]
+    .sort((left, right) => left.at - right.at)
+    .reduce<MotifNote[]>((normalized, note) => {
+      const previous = normalized.at(-1)
+      const at = clamp(Math.max(note.at, previous ? previous.at + 0.13 : 0.02), 0.02, 4.72)
+      normalized.push({
+        ...note,
+        at,
+        length: clamp(note.length, 0.14, Math.min(2.45, 5.18 - at)),
+        accent: clamp(note.accent ?? 1, 0.68, 1.2),
+      })
+      return normalized
+    }, [])
+}
+
+function insertPassingMotion(
+  notes: MotifNote[],
+  gesture: PhraseGesture,
+  seed: number,
+  barIndex: number,
+  direction: number,
+) {
+  if (!['question', 'answer', 'surge', 'lean'].includes(gesture) || notes.length >= 9) return notes
+  const candidates = notes.slice(0, -1).map((note, index) => ({
+    index,
+    gap: notes[index + 1].at - note.at,
+    interval: notes[index + 1].degree - note.degree,
+  })).filter(({ gap, interval }) => gap >= 0.62 && (interval === 0 || Math.abs(interval) >= 2))
+  if (!candidates.length) return notes
+
+  const chance = seededUnit(seed ^ 0x2f6e2b1, barIndex * 23 + notes.length)
+  const threshold = gesture === 'surge' ? 0 : gesture === 'question' ? 0.18 : gesture === 'answer' ? 0.3 : 0.42
+  if (chance < threshold) return notes
+
+  const selected = candidates[Math.floor(seededUnit(seed ^ 0x63d8359, barIndex * 29) * candidates.length)]
+  const previous = notes[selected.index]
+  const next = notes[selected.index + 1]
+  const position = 0.42 + seededUnit(seed ^ 0x7a4d21, barIndex * 31 + selected.index) * 0.16
+  const degree = selected.interval === 0
+    ? previous.degree + direction
+    : previous.degree + Math.sign(selected.interval)
+  const passingNote: MotifNote = {
+    at: previous.at + selected.gap * position,
+    degree,
+    length: Math.min(0.3, selected.gap * 0.32, next.at - previous.at - 0.14),
+    accent: 0.72,
+  }
+  return [...notes.slice(0, selected.index + 1), passingNote, ...notes.slice(selected.index + 1)]
+}
+
+function shapeExpressivePhrase(
+  motif: MotifNote[],
+  gesture: PhraseGesture,
+  seed: number,
+  barIndex: number,
+  direction: number,
+) {
+  const timing = GESTURE_TIMING[gesture]
+  const variant = Math.floor(seededUnit(seed ^ 0x4c1906, barIndex * 17) * timing.offsets.length)
+  let notes = motif.map((note) => ({ ...note }))
+
+  if (gesture === 'answer' && notes.length >= 5) {
+    const removable = 1 + Math.floor(seededUnit(seed ^ 0x19a53, barIndex * 19) * (notes.length - 2))
+    notes = notes.filter((_, noteIndex) => noteIndex !== removable)
+  } else if (gesture === 'breath' && notes.length >= 4) {
+    notes = notes.filter((_, noteIndex) => noteIndex !== notes.length - 2)
+  }
+
+  notes = notes.map((note, noteIndex) => {
+    const isLast = noteIndex === notes.length - 1
+    const phraseDrift = (seededUnit(seed ^ 0x51b7d, barIndex * 37 + noteIndex) - 0.5) * 0.08
+    const rhythmicOffset = timing.offsets[(noteIndex + variant) % timing.offsets.length]
+    let degree = note.degree
+    if (isLast && gesture === 'question') degree += direction
+    if (isLast && gesture === 'answer') degree -= direction
+    if (gesture === 'surge' && noteIndex >= Math.ceil(notes.length / 2) && !isLast) {
+      degree += noteIndex % 2 === 0 ? 1 : 0
+    }
+
+    const lengthFactor = isLast
+      ? gesture === 'question' ? 0.68
+        : gesture === 'answer' ? 1.22
+          : gesture === 'breath' ? 1.12
+            : gesture === 'surge' ? 1.24
+              : gesture === 'release' ? 1.34 : 1.08
+      : gesture === 'surge' ? (noteIndex % 2 === 0 ? 0.72 : 0.9)
+        : gesture === 'breath' ? 0.82
+          : 0.94 + (noteIndex % 2) * 0.08
+    const accent = isLast
+      ? gesture === 'question' ? 0.82 : gesture === 'surge' ? 1.12 : 0.96
+      : noteIndex === 0 ? 1.02 : gesture === 'surge' && noteIndex % 2 === 0 ? 1.1 : 0.9
+
+    return {
+      ...note,
+      at: note.at + timing.delay + rhythmicOffset + phraseDrift,
+      degree,
+      length: note.length * lengthFactor,
+      accent,
+    }
+  })
+
+  return normalizePhraseNotes(insertPassingMotion(notes, gesture, seed, barIndex, direction))
+}
+
 function developMotif(motif: MotifNote[], style: DevelopmentStyle, echoDirection: number) {
   return motif.map((note, noteIndex) => {
     if (style === 'answer') {
@@ -734,9 +873,57 @@ function getSectionMotif(
 interface RenderedLeadPhrase {
   barIndex: number
   section: CompositionSection
+  gesture: PhraseGesture
   chordRoot: number
   chordDegrees: number[]
   motif: MotifNote[]
+}
+
+function connectRenderedLeadPhrases(
+  phrases: RenderedLeadPhrase[],
+  scaleLength: number,
+  leadDegreeOffset: number,
+) {
+  const connected = phrases.map((phrase) => ({
+    ...phrase,
+    motif: phrase.motif.map((note) => ({ ...note })),
+  }))
+  const registerCenter = leadDegreeOffset + 3.5
+
+  for (let index = 1; index < connected.length; index += 1) {
+    const previous = connected[index - 1].motif.at(-1)
+    const current = connected[index]
+    const first = current.motif[0]
+    if (!previous || !first) continue
+    const averageDegree = average(current.motif.map((note) => note.degree))
+    const shift = [-scaleLength, 0, scaleLength].reduce((best, candidate) => {
+      const score = Math.abs(first.degree + candidate - previous.degree)
+        + Math.abs(averageDegree + candidate - registerCenter) * 0.22
+      const bestScore = Math.abs(first.degree + best - previous.degree)
+        + Math.abs(averageDegree + best - registerCenter) * 0.22
+      return score < bestScore ? candidate : best
+    }, 0)
+    if (shift !== 0) current.motif = current.motif.map((note) => ({ ...note, degree: note.degree + shift }))
+  }
+
+  connected.slice(0, -1).forEach((phrase, index) => {
+    if (phrase.gesture !== 'question') return
+    const last = phrase.motif.at(-1)
+    const beforeLast = phrase.motif.at(-2)
+    const next = connected[index + 1].motif[0]
+    if (!last || !beforeLast || !next || last.at < 2.7) return
+    const lowerPickup = next.degree - 1
+    const upperPickup = next.degree + 1
+    const pickupDegree = Math.abs(lowerPickup - beforeLast.degree) <= Math.abs(upperPickup - beforeLast.degree)
+      ? lowerPickup
+      : upperPickup
+    if (Math.abs(pickupDegree - beforeLast.degree) > 4) return
+    last.degree = pickupDegree
+    last.length = Math.min(last.length, 0.38)
+    last.accent = 0.78
+  })
+
+  return connected
 }
 
 function buildRenderedLeadPhrases(
@@ -756,9 +943,17 @@ function buildRenderedLeadPhrases(
   const developed = developMotif(coreMotif, developmentStyle, getEchoDirection(result))
   const lifted = liftMotif(coreMotif, motifFamily)
   const shortened = turnMotif(coreMotif)
+  const direction = getEchoDirection(result)
+  const phraseSeed = storySeed([
+    result.story,
+    motifFamily,
+    developmentStyle,
+    cadenceStyle,
+    coreMotif.map((note) => `${note.at}:${note.degree}:${note.length}`).join(','),
+  ].join('|'))
   let previousChordDegrees: number[] | null = null
 
-  return arc.map((section, barIndex) => {
+  const phrases = arc.map((section, barIndex) => {
     const chordRoot = section === 'outro' ? cadence.finalChord : progression[barIndex % progression.length]
     const voicedTriad = voiceLeadChord(chordRoot, previousChordDegrees, scaleLength)
     previousChordDegrees = voicedTriad
@@ -767,6 +962,9 @@ function buildRenderedLeadPhrases(
       : section === 'climax'
         ? [...voicedTriad, voicedTriad[0] + scaleLength]
         : voicedTriad
+    const isCadenceBar = barIndex === outroIndex - 1
+    const developmentBar = Math.max(0, barIndex - introBars)
+    const gesture = getPhraseGesture(section, isCadenceBar, developmentBar)
     const motif = getSectionMotif(
       coreMotif,
       developed,
@@ -774,11 +972,12 @@ function buildRenderedLeadPhrases(
       shortened,
       cadence,
       section,
-      barIndex === outroIndex - 1,
-      Math.max(0, barIndex - introBars),
+      isCadenceBar,
+      developmentBar,
     )
 
-    const fittedMotif = fitMotifToChord(motif, chordDegrees, scaleLength)
+    const expressiveMotif = shapeExpressivePhrase(motif, gesture, phraseSeed, barIndex, direction)
+    const fittedMotif = fitMotifToChord(expressiveMotif, chordDegrees, scaleLength)
     const audibleMotif = section === 'intro'
       ? fittedMotif.filter((note) => note.at >= 2)
       : fittedMotif
@@ -786,11 +985,32 @@ function buildRenderedLeadPhrases(
     return {
       barIndex,
       section,
+      gesture,
       chordRoot,
       chordDegrees,
       motif: audibleMotif.map((note) => ({ ...note, degree: note.degree + leadDegreeOffset })),
     }
   })
+
+  return connectRenderedLeadPhrases(phrases, scaleLength, leadDegreeOffset)
+}
+
+function getPhraseShapeKey(motif: MotifNote[]) {
+  if (!motif.length) return 'rest'
+  const firstDegree = motif[0].degree
+  const contour = motif.map((note) => note.degree - firstDegree).join(',')
+  const rhythm = motif.map((note, index) => {
+    const previousAt = index === 0 ? 0 : motif[index - 1].at
+    return `${Math.round((note.at - previousAt) * 4)}:${Math.round(note.length * 4)}`
+  }).join(',')
+  return `${contour}|${rhythm}`
+}
+
+function getPhraseRhythmKey(motif: MotifNote[]) {
+  return motif.map((note, index) => {
+    const previousAt = index === 0 ? 0 : motif[index - 1].at
+    return `${Math.round((note.at - previousAt) * 4)}:${Math.round(note.length * 4)}`
+  }).join(',')
 }
 
 function evaluateRenderedLeadPhrases(result: SongResult, phrases: RenderedLeadPhrase[]) {
@@ -804,16 +1024,57 @@ function evaluateRenderedLeadPhrases(result: SongResult, phrases: RenderedLeadPh
   const reasons = [...new Set(evaluations.flatMap((evaluation) => (
     evaluation.reasons.filter((reason) => reason !== 'reference-overlap')
   )))]
+  const phraseKeys = phrases.map((phrase) => getPhraseShapeKey(phrase.motif))
+  const rhythmKeys = phrases.map((phrase) => getPhraseRhythmKey(phrase.motif))
+  const uniquePhraseRatio = new Set(phraseKeys).size / Math.max(1, phraseKeys.length)
+  const rhythmDiversity = new Set(rhythmKeys).size / Math.max(1, rhythmKeys.length)
+  const repeatedPhraseRatio = 1 - uniquePhraseRatio
+  let intentionalBreathCount = 0
+  let maxCrossBarLeap = 0
+  const scale = SCALE_STEPS[result.mood.scale]
+  phrases.forEach((phrase, index) => {
+    const first = phrase.motif[0]
+    if (!first) return
+    if (index === 0) {
+      if (first.at >= 0.24) intentionalBreathCount += 1
+      return
+    }
+    const previous = phrases[index - 1].motif.at(-1)
+    if (!previous) return
+    const gap = 4 + first.at - (previous.at + previous.length)
+    if (first.at >= 0.24 || gap >= 0.38) intentionalBreathCount += 1
+    maxCrossBarLeap = Math.max(
+      maxCrossBarLeap,
+      Math.abs(degreeSemitone(scale, first.degree) - degreeSemitone(scale, previous.degree)),
+    )
+  })
   if (referenceOverlap >= 0.55) reasons.push('reference-overlap')
+  if (phrases.length >= 6 && uniquePhraseRatio < 0.5) reasons.push('phrase-repetition')
+  if (phrases.length >= 6 && rhythmDiversity < 0.42) reasons.push('rigid-rhythm')
+  if (intentionalBreathCount < 2) reasons.push('no-breath')
+  if (maxCrossBarLeap > 12) reasons.push('cross-bar-leaps')
+
+  const phraseStructuralScore = average(evaluations.map((evaluation) => evaluation.structuralScore))
+  const structuralScore = clamp(
+    phraseStructuralScore * 0.74 + uniquePhraseRatio * 0.16 + rhythmDiversity * 0.1
+      - repeatedPhraseRatio * 0.08,
+    0,
+    1,
+  )
 
   return {
     hardPass: reasons.length === 0,
-    structuralScore: average(evaluations.map((evaluation) => evaluation.structuralScore)),
+    structuralScore,
     noveltyScore: average(evaluations.map((evaluation) => evaluation.noveltyScore)),
     referenceOverlap,
-    fingerprintKey: evaluations.map((evaluation) => evaluation.fingerprints.join(',')).join('|'),
+    fingerprintKey: phraseKeys.join('|'),
     reasons,
     phraseCount: phrases.length,
+    uniquePhraseRatio,
+    repeatedPhraseRatio,
+    rhythmDiversity,
+    intentionalBreathCount,
+    maxCrossBarLeap,
   }
 }
 
@@ -1584,12 +1845,43 @@ function scheduleRecordedWoodblock(
   )
 }
 
-function storySeed(story: string) {
-  let seed = 0
-  for (let index = 0; index < story.length; index += 1) {
-    seed = (seed * 31 + story.charCodeAt(index)) >>> 0
+const ARPEGGIO_CONTOURS = [
+  [0, 1, 2, 1, 0, 2, 1, 2],
+  [0, 2, 1, 2, 0, 1, 2, 1],
+  [1, 0, 2, 1, 2, 0, 1, 2],
+]
+
+const ARPEGGIO_TIMING: Record<PhraseGesture, number[]> = {
+  invitation: [0, 0.08],
+  question: [0, 0.09, -0.04, 0.12],
+  answer: [0.12, -0.05, 0.07, -0.08],
+  breath: [0.22, 0.04, 0.16],
+  surge: [0, -0.06, 0.1, -0.04],
+  lean: [0.08, -0.04, 0.12],
+  release: [0],
+}
+
+function getArpeggioStep(
+  step: number,
+  steps: number,
+  barIndex: number,
+  gesture: PhraseGesture,
+  seed: number,
+  isIntro: boolean,
+) {
+  const contourIndex = Math.floor(seededUnit(seed ^ 0x35bc81, barIndex * 11) * ARPEGGIO_CONTOURS.length)
+  const contour = ARPEGGIO_CONTOURS[contourIndex]
+  const timing = ARPEGGIO_TIMING[gesture]
+  const timingVariant = Math.floor(seededUnit(seed ^ 0x72e41, barIndex * 13) * timing.length)
+  const gridPosition = isIntro ? 2 + step * 0.88 : step * (4 / steps)
+  const phraseOffset = timing[(step + timingVariant) % timing.length]
+  const looseness = (seededUnit(seed ^ 0x4a17, barIndex * 37 + step) - 0.5) * 0.045
+
+  return {
+    chordIndex: contour[step % contour.length],
+    beatPosition: clamp(gridPosition + phraseOffset + looseness, 0, 3.82),
+    lengthFactor: 0.84 + seededUnit(seed ^ 0x6d2a9, barIndex * 41 + step) * 0.28,
   }
-  return seed
 }
 
 function scheduleComposition(
@@ -1764,7 +2056,6 @@ function scheduleComposition(
       }
     }
 
-    const arpeggioPattern = [0, 1, 2, 1, 0, 1, 2, 1]
     const arpeggioSteps = isOutro
       ? 0
       : isIntro
@@ -1777,28 +2068,31 @@ function scheduleComposition(
           ? 2
           : plan.arpeggioSteps
     for (let step = 0; step < arpeggioSteps; step += 1) {
-      const chordDegree = chordDegrees[arpeggioPattern[step] % chordDegrees.length]
+      const arpeggio = getArpeggioStep(
+        step,
+        arpeggioSteps,
+        barIndex,
+        leadPhrase.gesture,
+        seed,
+        isIntro,
+      )
+      const chordDegree = chordDegrees[arpeggio.chordIndex % chordDegrees.length]
       const semitone = degreeSemitone(scale, chordDegree)
-      const gridStart = isIntro
-        ? barStart + beat * (2 + step)
-        : barStart + step * (bar / arpeggioSteps)
-      const playingOffset = (seededUnit(seed ^ 0x4a17, barIndex * 37 + step) - 0.5) * 0.026
-        + (plan.lead === 'guitar' && step % 2 === 1 ? 0.012 : 0)
-      const noteStart = Math.max(barStart, gridStart + playingOffset)
+      const noteStart = barStart + beat * arpeggio.beatPosition
       const humanVelocity = 0.92 + seededUnit(seed, barIndex * 31 + step) * 0.14
       if (plan.lead === 'guitar') {
-        scheduleAcousticPiano(context, buses, sampleBank, noteFrequency(root, semitone, -1), noteStart, beat * 0.72, 0.016 * dynamics * humanVelocity, (step % 2 ? 0.2 : -0.2) * (1 + spaciousness * 0.7))
+        scheduleAcousticPiano(context, buses, sampleBank, noteFrequency(root, semitone, -1), noteStart, beat * 0.72 * arpeggio.lengthFactor, 0.016 * dynamics * humanVelocity, (step % 2 ? 0.2 : -0.2) * (1 + spaciousness * 0.7))
       } else {
-        scheduleAcousticGuitar(context, buses, sampleBank, noteFrequency(root, semitone, -1), noteStart, beat * 0.62, 0.024 * dynamics * humanVelocity, (step % 2 ? 0.23 : -0.23) * (1 + spaciousness * 0.7))
+        scheduleAcousticGuitar(context, buses, sampleBank, noteFrequency(root, semitone, -1), noteStart, beat * 0.62 * arpeggio.lengthFactor, 0.024 * dynamics * humanVelocity, (step % 2 ? 0.23 : -0.23) * (1 + spaciousness * 0.7))
       }
     }
 
     const harmonizedMotif = leadPhrase.motif
 
     harmonizedMotif.forEach((note, noteIndex) => {
-      const timing = isOutro ? 0 : (seededUnit(seed, barIndex * 43 + noteIndex) - 0.5) * 0.042
-      const noteStart = Math.max(barStart, barStart + note.at * beat + timing)
-      const velocity = 0.91 + seededUnit(seed ^ 0x71c3, barIndex * 47 + noteIndex) * 0.17
+      const noteStart = barStart + note.at * beat
+      const velocity = (0.96 + seededUnit(seed ^ 0x71c3, barIndex * 47 + noteIndex) * 0.08)
+        * (note.accent ?? 1)
       const frequency = noteFrequency(root, degreeSemitone(scale, note.degree))
       const pan = noteIndex % 2 ? 0.1 : -0.1
       const leadVolume = (plan.lead === 'piano' ? 0.048 : plan.lead === 'guitar' ? 0.044 : 0.036)
